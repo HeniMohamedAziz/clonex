@@ -10,28 +10,31 @@ cd clonex
 node bin/clone.js
 ```
 
-On first launch, `clonex` automatically checks all required packages and browser engines and prompts `(Y/N)` to install anything missing.
+On first launch, `clonex` checks all required packages and browser engines and prompts `(Y/N)` to install anything missing.
 
 *(Run `npm link` once to launch `clonex` from any directory, or double-click `clonex.bat` on Windows).*
 
-## Modules
+## Output Structure
 
-1. **1:1 Webpage Clone** — Captures live rendered DOM, CSSOM rules, CSS-in-JS, canvas bitmaps, web fonts, and images, outputting clean HTML/CSS and modular React + Tailwind CSS components with pixel-match verification.
-2. **Full Website & Subdomain Mirror** — Crawls an entire website (and optionally all live subdomains), clones every page 1:1 with local assets, downloads discovered PDFs/documents, rewrites internal links for offline multi-page navigation, and generates `SITE-INDEX.html`.
-3. **Multi-Viewport Snapshots** — Captures @2x Retina screenshots across Desktop (`1440x900`), Tablet (`768x1024`), and Mobile (`390x844`) viewports.
-4. **Total Site Recon & Everything Scraper** — Discovers subdomains (`crt.sh` Certificate Transparency, HackerTarget, Wayback Machine CDX, DNS brute-force), parses `robots.txt` and recursive `sitemap.xml` trees, spiders all pages across hosts, scans JS bundles for hidden API/GraphQL/REST endpoints, and exports:
-   - `REPORT.md` & `crawl.json` — Complete intelligence summary
-   - `pages.csv` & `pages-full.jsonl` — Every crawled URL, status, title, H1, word count, and metadata
-   - `content/<host>/<page>.md` — Clean Markdown text extracted from every page
-   - `subdomains.csv` & `subdomains.json` — All discovered subdomains, IPs, status codes, titles, and servers
-   - `contacts.csv`, `emails.txt`, `phones.txt`, `socials.json` — Every email, phone number, and social profile across the site
-   - `links/` — `internal.txt`, `external.txt`, `external-domains.txt`, `endpoints.txt`, `documents.txt`, `media.txt`, `broken.csv`, `redirects.csv`, `archived.txt`
-   - `forms.json` & `tables/*.csv` — All HTML forms/inputs and all HTML tables converted to CSV
-   - `graph.json` & `sitemap.generated.xml` — Full internal link graph and generated XML sitemap
-5. **Subdomain & Archive Hunter** — Dedicated CT log + DNS brute-force + Wayback CDX enumeration with live HTTP/HTTPS probing and batch subdomain cloning.
-6. **Design System & Tokens** — Extracts color palettes, typography, CSS custom properties, and `tailwind.config.js`.
-7. **Asset Harvester** — Bulk-downloads images, inline SVGs, and web fonts.
-8. **Project Vault & Local Server** — Preview, manage, or serve any captured site locally.
+Every target inside `./cloned-sites/<domain>/` is organized into numbered folders alongside a standalone offline viewer (`DASHBOARD.html`) that opens directly in any browser without needing a server:
+
+```text
+cloned-sites/<domain>/
+├── DASHBOARD.html                      # Interactive offline HUD viewer (Overview, Subdomains, Pages, Content Reader, APIs, Contacts)
+├── 01-html-clone/                      # 1:1 visual clone (index.html, styles.css, single-file.html, assets/)
+├── 02-react-project/                   # Ready-to-run Vite + React + Tailwind CSS project
+├── 03-design-system/                   # design-tokens.json, tailwind.config.js, palette-preview.html
+├── 04-screenshots/                     # original.png, clone-verified.png, responsive/
+├── 05-intelligence/                    # Full reconnaissance & scraped data
+│   ├── REPORT.md                       # Formatted Markdown summary report
+│   ├── 01-subdomains/                  # subdomains.csv, subdomains.json, wayback-archive-urls.txt
+│   ├── 02-pages-and-content/           # pages-summary.csv, sitemap.xml, markdown-by-host/<host>/*.md
+│   ├── 03-apis-and-links/              # internal-api-endpoints.txt, third-party-endpoints.txt, internal-pages.txt, external-links.txt, documents-and-files.txt
+│   ├── 04-contacts-and-forms/          # contacts-and-socials.csv, emails.txt, phones.txt, socials.json, forms.json
+│   ├── 05-tables-and-structured-data/  # tech-stack.json, tables/*.csv
+│   └── 06-raw-data/                    # full-crawl.json, pages-full.jsonl, link-graph.json
+└── 06-site-mirror/                     # Multi-page full website & subdomain offline mirror (SITE-INDEX.html)
+```
 
 ## Direct CLI Commands
 

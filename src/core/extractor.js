@@ -443,23 +443,38 @@ export function extractPage(html, pageUrl, headers = {}) {
   };
 }
 
+const NOISE_ENDPOINT_RE =
+  /^https?:\/\/(www\.)?(w3\.org|schema\.org|json-schema\.org|reactjs\.org|react\.dev|vuejs\.org|angular\.io|svelte\.dev|github\.com\/(facebook|zloirock|browserslist)|example\.com|your-app\.com|localhost:\d+|127\.0\.0\.1|a\/|xn--)/i;
+
 export function extractEndpointsFromJs(code, base) {
   if (!code) return [];
   const found = new Set();
   const patterns = [
-    /["'`](https?:\/\/[^"'`\s<>{}]{4,300})["'`]/g,
-    /["'`](\/(?:api|v\d|graphql|rest|wp-json|auth|oauth|admin|internal|services?|ajax|rpc|gql)[^"'`\s<>{}]{0,200})["'`]/gi,
-    /fetch\(\s*["'`]([^"'`]+)["'`]/g,
-    /axios\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g,
-    /\.open\(\s*["'`](?:GET|POST|PUT|DELETE|PATCH)["'`]\s*,\s*["'`]([^"'`]+)["'`]/gi
+    /["'`](https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^"'`\s<>{}]*)?)["'`]/g,
+    /["'`](\/(?:api|v\d|graphql|rest|wp-json|auth|oauth|admin|organization|api-key|internal|services?|ajax|rpc|gql|trpc|webhook|webhooks)\b[^"'`\s<>{}]{0,180})["'`]/gi,
+    /fetch\(\s*["'`]([^"'`\s]+)["'`]/g,
+    /axios\.(?:get|post|put|patch|delete)\(\s*["'`]([^"'`\s]+)["'`]/g,
+    /\.open\(\s*["'`](?:GET|POST|PUT|DELETE|PATCH)["'`]\s*,\s*["'`]([^"'`\s]+)["'`]/gi
   ];
   for (const re of patterns) {
     for (const m of code.matchAll(re)) {
-      const raw = m[1];
-      if (!raw || raw.includes('${') || /\.(png|jpe?g|gif|svg|webp|woff2?|ttf|css)(\?|$)/i.test(raw)) continue;
-      if (/^https?:\/\/(www\.)?(w3\.org|schema\.org|reactjs\.org|github\.com\/facebook)/.test(raw)) continue;
+      const raw = m[1]?.trim();
+      if (
+        !raw ||
+        raw.length < 4 ||
+        raw.includes('${') ||
+        raw.includes(' ') ||
+        /\/\/\/|\.\.\.|\/_next\b/i.test(raw) ||
+        /\.(png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|otf|eot|css|less|scss|sass|js|mjs|map|mp4|webm|mp3)\/?(\?|$)/i.test(raw)
+      ) {
+        continue;
+      }
       try {
-        found.add(new URL(raw, base).href);
+        const resolved = new URL(raw, base);
+        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') continue;
+        if (!resolved.hostname.includes('.')) continue;
+        if (NOISE_ENDPOINT_RE.test(resolved.href)) continue;
+        found.add(resolved.href);
       } catch {}
     }
   }

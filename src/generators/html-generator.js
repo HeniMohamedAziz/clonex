@@ -12,7 +12,11 @@ function serializeAttrs(attrsObj = {}) {
 }
 
 export async function generateHtmlOutput(captureData, outputDir, options = {}) {
-  const { downloadAssets = true, onProgress = () => {} } = options;
+  const {
+    downloadAssets = true,
+    tokensOutputDir = outputDir,
+    onProgress = () => {}
+  } = options;
   const {
     finalUrl,
     userAgent,
@@ -146,8 +150,9 @@ export async function generateHtmlOutput(captureData, outputDir, options = {}) {
   const cssPath = path.join(outputDir, 'styles.css');
   const htmlPath = path.join(outputDir, 'index.html');
   const singleFilePath = path.join(outputDir, 'single-file.html');
-  const tokensPath = path.join(outputDir, 'design-tokens.json');
+  const tokensPath = path.join(tokensOutputDir, 'design-tokens.json');
 
+  await fs.mkdir(tokensOutputDir, { recursive: true });
   await fs.writeFile(cssPath, finalCss, 'utf-8');
   await fs.writeFile(htmlPath, formattedHtml, 'utf-8');
   await fs.writeFile(tokensPath, JSON.stringify(designTokens, null, 2), 'utf-8');

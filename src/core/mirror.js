@@ -139,6 +139,7 @@ export async function mirrorFullWebsite(startUrl, options = {}) {
 
         const htmlRes = await generateHtmlOutput(captureData, tempPageDir, {
           downloadAssets: true,
+          flatDir: true,
           onProgress: () => {}
         });
 

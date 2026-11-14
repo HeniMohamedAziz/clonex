@@ -6,6 +6,7 @@ import { captureWebpage } from '../capturer.js';
 import { generateHtmlOutput } from '../generators/html-generator.js';
 import { generateReactProject } from '../generators/react-generator.js';
 import { verifyCloneFidelity, createStaticServer } from '../verifier.js';
+import { updateTargetDashboard, generatePalettePreviewHtml } from '../core/dashboard.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, selectFromMenu, askInput } from '../ui/prompt.js';
 
@@ -36,8 +37,16 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
     verify = true
   } = jobOptions;
 
-  await fs.mkdir(outputDir, { recursive: true });
-  const originalScreenshotPath = path.join(outputDir, 'screenshot-original.png');
+  const htmlCloneDir = path.join(outputDir, '01-html-clone');
+  const designSystemDir = path.join(outputDir, '03-design-system');
+  const screenshotsDir = path.join(outputDir, '04-screenshots');
+
+  await fs.mkdir(htmlCloneDir, { recursive: true });
+  await fs.mkdir(designSystemDir, { recursive: true });
+  await fs.mkdir(screenshotsDir, { recursive: true });
+
+  const originalScreenshotPath = path.join(screenshotsDir, 'original.png');
+  const cloneScreenshotPath = path.join(screenshotsDir, 'clone-verified.png');
 
   console.log('');
   console.log(`  ${DIM('TARGET   //')} ${ARC(targetUrl)}`);
@@ -57,10 +66,16 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
       onProgress: (msg) => spinner.update(msg.toUpperCase())
     });
 
-    const htmlResult = await generateHtmlOutput(captureData, outputDir, {
+    const htmlResult = await generateHtmlOutput(captureData, htmlCloneDir, {
       downloadAssets,
+      tokensOutputDir: designSystemDir,
       onProgress: (msg) => spinner.update(msg.toUpperCase())
     });
+
+    await generatePalettePreviewHtml(
+      captureData.designTokens,
+      path.join(designSystemDir, 'palette-preview.html')
+    );
 
     let reactResult = null;
     if (generateReact) {
@@ -69,43 +84,53 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
         captureData.designTokens,
         outputDir,
         {
+          reactDirName: '02-react-project',
+          assetsSourceDir: path.join(htmlCloneDir, 'assets'),
           onProgress: (msg) => spinner.update(msg.toUpperCase())
         }
       );
+      await fs
+        .copyFile(
+          path.join(reactResult.reactDir, 'tailwind.config.js'),
+          path.join(designSystemDir, 'tailwind.config.js')
+        )
+        .catch(() => {});
     }
 
     let verifyResult = null;
     if (verify) {
       verifyResult = await verifyCloneFidelity({
-        outputDir,
+        outputDir: htmlCloneDir,
         originalScreenshotPath,
+        cloneScreenshotPath,
         viewportWidth,
         viewportHeight,
         onProgress: (msg) => spinner.update(msg.toUpperCase())
       });
     }
 
+    const dashboardPath = await updateTargetDashboard(outputDir);
+
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
     spinner.succeed(`TARGET ACQUIRED: "${captureData.title}" [${elapsedSec}s]`);
 
     console.log('');
-    console.log(`  ${RED.bold('▸ ARTIFACTS')}`);
-    console.log(`   ${ARC('◈')} ${GOLD('HTML / CSS    ')} ${chalk.white(path.join(outputDir, 'index.html'))}`);
-    console.log(`   ${ARC('◈')} ${GOLD('STYLESHEET    ')} ${chalk.white(path.join(outputDir, 'styles.css'))}`);
-    console.log(`   ${ARC('◈')} ${GOLD('SINGLE FILE   ')} ${chalk.white(path.join(outputDir, 'single-file.html'))}`);
-    console.log(`   ${ARC('◈')} ${GOLD('DESIGN TOKENS ')} ${chalk.white(path.join(outputDir, 'design-tokens.json'))}`);
-
+    console.log(`  ${RED.bold('▸ ORGANIZED ARTIFACTS')}`);
+    console.log(`   ${ARC('◈')} ${GOLD('HUD DASHBOARD ')} ${ARC.bold(dashboardPath)}`);
+    console.log(`   ${ARC('◈')} ${GOLD('01 HTML/CSS   ')} ${chalk.white(path.join(htmlCloneDir, 'index.html'))}`);
+    console.log(`   ${ARC('◈')} ${GOLD('01 SINGLE FILE')} ${chalk.white(path.join(htmlCloneDir, 'single-file.html'))}`);
     if (downloadAssets) {
       console.log(
-        `   ${ARC('◈')} ${GOLD('LOCAL ASSETS  ')} ${chalk.white(`${htmlResult.assetStats.downloadedCount} files`)} ${DIM('->')} ${chalk.white(path.join(outputDir, 'assets'))}`
+        `   ${ARC('◈')} ${GOLD('01 ASSETS     ')} ${chalk.white(`${htmlResult.assetStats.downloadedCount} files -> ${path.join(htmlCloneDir, 'assets')}`)}`
       );
     }
-
     if (reactResult) {
       console.log(
-        `   ${ARC('◈')} ${GOLD('REACT BUILD   ')} ${chalk.white(reactResult.reactDir)} ${DIM(`[${reactResult.components.length} modules]`)}`
+        `   ${ARC('◈')} ${GOLD('02 REACT APP  ')} ${chalk.white(reactResult.reactDir)} ${DIM(`[${reactResult.components.length} modules]`)}`
       );
     }
+    console.log(`   ${ARC('◈')} ${GOLD('03 DESIGN SYS ')} ${chalk.white(designSystemDir)}`);
+    console.log(`   ${ARC('◈')} ${GOLD('04 SCREENSHOTS')} ${chalk.white(screenshotsDir)}`);
 
     if (verifyResult && verifyResult.similarityPercent !== null) {
       console.log(
@@ -114,7 +139,7 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
     }
     console.log('');
 
-    return { outputDir, captureData, htmlResult, reactResult, verifyResult };
+    return { outputDir, dashboardPath, captureData, htmlResult, reactResult, verifyResult };
   } catch (err) {
     spinner.fail(`CAPTURE ABORTED: ${err.message}`);
     throw err;
@@ -202,13 +227,18 @@ export const fullCloneModule = {
 
       const postActions = [
         {
+          id: 'dashboard',
+          title: 'Open Interactive HUD Dashboard',
+          description: path.join(outputDir, 'DASHBOARD.html')
+        },
+        {
           id: 'preview',
-          title: 'Launch Local Server',
-          description: `http://localhost:${context.settings.previewPort || 4000}`
+          title: 'Launch Local Server (1:1 HTML Clone)',
+          description: `http://localhost:${context.settings.previewPort || 4000}/01-html-clone/index.html`
         },
         {
           id: 'explorer',
-          title: 'Open Output Directory',
+          title: 'Open Output Directory in Explorer',
           description: outputDir
         }
       ];
@@ -219,7 +249,14 @@ export const fullCloneModule = {
 
       if (!nextAction) return;
 
-      if (nextAction.id === 'explorer') {
+      if (nextAction.id === 'dashboard') {
+        if (process.platform === 'win32') {
+          spawn('cmd.exe', ['/c', 'start', '', path.join(outputDir, 'DASHBOARD.html')], {
+            detached: true,
+            stdio: 'ignore'
+          }).unref();
+        }
+      } else if (nextAction.id === 'explorer') {
         if (process.platform === 'win32') {
           spawn('explorer.exe', [outputDir], { detached: true, stdio: 'ignore' }).unref();
         }
@@ -227,7 +264,7 @@ export const fullCloneModule = {
         const port = context.settings.previewPort || 4000;
         const server = createStaticServer(outputDir);
         await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
-        const previewUrl = `http://localhost:${port}`;
+        const previewUrl = `http://localhost:${port}/01-html-clone/index.html`;
         console.log(
           `\n  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ONLINE ')} ${ARC(previewUrl)}`
         );

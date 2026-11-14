@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import chalk from 'chalk';
 import { captureWebpage } from '../capturer.js';
 import { downloadAndRewriteAssets } from '../asset-downloader.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
@@ -25,7 +26,8 @@ export const assetHarvesterModule = {
     if (!targetUrl) return;
 
     const outputDir = getDefaultOutputDir(process.cwd(), targetUrl);
-    const svgDir = path.join(outputDir, 'assets', 'svgs');
+    const htmlCloneDir = path.join(outputDir, '01-html-clone');
+    const svgDir = path.join(htmlCloneDir, 'assets', 'svgs');
     await fs.mkdir(svgDir, { recursive: true });
 
     console.log('');
@@ -67,10 +69,11 @@ export const assetHarvesterModule = {
         cssText: captureData.fullCss,
         $,
         baseUrl: captureData.finalUrl,
-        outputDir,
+        outputDir: htmlCloneDir,
         networkCache: captureData.networkCache,
         userAgent: captureData.userAgent
       });
+      await updateTargetDashboard(outputDir);
 
       spinner.succeed('ASSET HARVEST COMPLETE');
 
@@ -82,7 +85,7 @@ export const assetHarvesterModule = {
         `   ${ARC('◈')} ${GOLD('INLINE SVGS   ')} ${chalk.white(inlineSvgCount)}`
       );
       console.log(
-        `   ${ARC('◈')} ${GOLD('DIRECTORY     ')} ${chalk.white(path.join(outputDir, 'assets'))}`
+        `   ${ARC('◈')} ${GOLD('DIRECTORY     ')} ${chalk.white(path.join(htmlCloneDir, 'assets'))}`
       );
     } catch (err) {
       spinner.fail(`ABORTED: ${err.message}`);

@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import chalk from 'chalk';
 import { launchBrowser, navigateSafely } from '../browser-finder.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
@@ -29,7 +30,8 @@ export const snapshotsModule = {
     const targetUrl = await askUrl('TARGET URL');
     if (!targetUrl) return;
 
-    const outputDir = path.join(getDefaultOutputDir(process.cwd(), targetUrl), 'snapshots');
+    const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
+    const outputDir = path.join(baseOut, '04-screenshots', 'responsive');
     await fs.mkdir(outputDir, { recursive: true });
 
     console.log('');
@@ -61,6 +63,7 @@ export const snapshotsModule = {
         await context.close();
       }
 
+      await updateTargetDashboard(baseOut);
       spinner.succeed('VIEWPORT CAPTURE COMPLETE');
       console.log(`\n  ${RED.bold('▸ OUTPUT')}`);
       for (const item of savedFiles) {

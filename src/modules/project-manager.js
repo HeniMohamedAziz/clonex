@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { createStaticServer } from '../verifier.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { printSectionHeader } from '../ui/banner.js';
 import { selectFromMenu, askInput, pauseForEnter } from '../ui/prompt.js';
 
@@ -15,7 +16,7 @@ export const projectManagerModule = {
   id: 'project-manager',
   category: 'System',
   title: 'Project Vault & Local Server',
-  description: 'Preview, inspect or purge captured targets',
+  description: 'Open HUD Dashboard, preview clones or manage captured targets',
 
   async run(context) {
     printSectionHeader('Project Vault');
@@ -38,11 +39,19 @@ export const projectManagerModule = {
 
     const menuItems = folders.map((folderName) => {
       const fullPath = path.join(rootClonesDir, folderName);
-      const hasReact = existsSync(path.join(fullPath, 'react'));
+      const parts = [];
+      if (existsSync(path.join(fullPath, '01-html-clone')) || existsSync(path.join(fullPath, 'index.html')))
+        parts.push('1:1 Clone');
+      if (existsSync(path.join(fullPath, '02-react-project')) || existsSync(path.join(fullPath, 'react')))
+        parts.push('React');
+      if (existsSync(path.join(fullPath, '05-intelligence')) || existsSync(path.join(fullPath, 'recon')))
+        parts.push('Recon Dossier');
+      if (existsSync(path.join(fullPath, '06-site-mirror')) || existsSync(path.join(fullPath, 'mirror')))
+        parts.push('Full Mirror');
       return {
         id: folderName,
         title: folderName,
-        description: hasReact ? 'HTML/CSS + React' : 'HTML/CSS',
+        description: parts.join(' + ') || 'Target Folder',
         fullPath
       };
     });
@@ -55,13 +64,18 @@ export const projectManagerModule = {
     console.log('');
     const actions = [
       {
+        id: 'dashboard',
+        title: 'Open Interactive HUD Dashboard (DASHBOARD.html)',
+        description: 'View organized intelligence, subdomains, pages, Markdown & visual clone'
+      },
+      {
         id: 'preview',
-        title: 'Launch Local Server',
+        title: 'Launch Local 1:1 Clone Server',
         description: `http://localhost:${context.settings.previewPort || 4000}`
       },
       {
         id: 'explorer',
-        title: 'Open Directory',
+        title: 'Open Target Directory in Explorer',
         description: selectedProject.fullPath
       },
       {
@@ -77,7 +91,16 @@ export const projectManagerModule = {
 
     if (!action) return;
 
-    if (action.id === 'explorer') {
+    if (action.id === 'dashboard') {
+      const dashPath = await updateTargetDashboard(selectedProject.fullPath);
+      if (process.platform === 'win32') {
+        spawn('cmd.exe', ['/c', 'start', '""', dashPath], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref();
+      }
+      await pauseForEnter();
+    } else if (action.id === 'explorer') {
       if (process.platform === 'win32') {
         spawn('explorer.exe', [selectedProject.fullPath], {
           detached: true,
@@ -87,7 +110,9 @@ export const projectManagerModule = {
       await pauseForEnter();
     } else if (action.id === 'preview') {
       const port = context.settings.previewPort || 4000;
-      const server = createStaticServer(selectedProject.fullPath);
+      const htmlCloneDir = path.join(selectedProject.fullPath, '01-html-clone');
+      const serveDir = existsSync(htmlCloneDir) ? htmlCloneDir : selectedProject.fullPath;
+      const server = createStaticServer(serveDir);
       await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
       const previewUrl = `http://localhost:${port}`;
       console.log(

@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { mirrorFullWebsite } from '../core/mirror.js';
 import { discoverSubdomains } from '../core/subdomains.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { beginAbortable, endAbortable } from '../core/abort.js';
 import { createStaticServer } from '../verifier.js';
 import { getDefaultOutputDir } from './full-clone.js';
@@ -76,7 +77,7 @@ export const siteMirrorModule = {
     }
 
     const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
-    const outputDir = path.join(baseOut, 'mirror');
+    const outputDir = path.join(baseOut, '06-site-mirror');
 
     console.log('');
     console.log(`  ${DIM('TARGET      //')} ${ARC(targetUrl)}`);
@@ -119,14 +120,16 @@ export const siteMirrorModule = {
         onProgress: (msg) => spinner.update(msg)
       });
 
+      await updateTargetDashboard(baseOut);
       const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
       const okCount = result.clonedPages.filter((p) => !p.error).length;
       spinner.succeed(`SITE MIRROR COMPLETE: ${okCount}/${result.clonedPages.length} PAGES CLONED [${elapsedSec}s]`);
 
       console.log(`\n  ${RED.bold('▸ MIRROR ARTIFACTS')}`);
+      console.log(`   ${ARC('◈')} ${GOLD('HUD DASHBOARD ')} ${ARC.bold(path.join(baseOut, 'DASHBOARD.html'))}`);
       console.log(`   ${ARC('◈')} ${GOLD('MASTER INDEX  ')} ${chalk.white(result.dashboardPath)}`);
       console.log(`   ${ARC('◈')} ${GOLD('ROOT CLONE    ')} ${chalk.white(path.join(outputDir, 'index.html'))}`);
-      console.log(`   ${ARC('◈')} ${GOLD('REACT BUILD   ')} ${chalk.white(path.join(outputDir, 'react'))}`);
+      console.log(`   ${ARC('◈')} ${GOLD('REACT BUILD   ')} ${chalk.white(path.join(outputDir, '02-react-project'))}`);
       console.log(`   ${ARC('◈')} ${GOLD('PAGES CLONED  ')} ${ARC.bold(okCount)} pages with offline link navigation`);
       if (result.downloadedDocs > 0) {
         console.log(`   ${ARC('◈')} ${GOLD('DOCUMENTS     ')} ${chalk.white(`${result.downloadedDocs} files in ${path.join(outputDir, 'documents')}`)}`);

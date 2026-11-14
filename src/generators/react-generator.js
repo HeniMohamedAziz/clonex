@@ -423,8 +423,12 @@ export default function ${componentName}() {
 }
 
 export async function generateReactProject(htmlGenResult, designTokens, outputDir, options = {}) {
-  const { onProgress = () => {} } = options;
-  const reactDir = path.join(outputDir, 'react');
+  const {
+    onProgress = () => {},
+    reactDirName = '02-react-project',
+    assetsSourceDir = path.join(path.dirname(htmlGenResult.htmlPath), 'assets')
+  } = options;
+  const reactDir = path.join(outputDir, reactDirName);
   const srcDir = path.join(reactDir, 'src');
   const componentsDir = path.join(srcDir, 'components');
   const publicDir = path.join(reactDir, 'public');
@@ -434,10 +438,9 @@ export async function generateReactProject(htmlGenResult, designTokens, outputDi
 
   onProgress('Generating React components...');
 
-  const sourceAssetsDir = path.join(outputDir, 'assets');
   const targetAssetsDir = path.join(publicDir, 'assets');
   try {
-    await fs.cp(sourceAssetsDir, targetAssetsDir, { recursive: true });
+    await fs.cp(assetsSourceDir, targetAssetsDir, { recursive: true });
   } catch {}
 
   const $ = cheerio.load(`<body>${htmlGenResult.cleanedBodyHtml}</body>`, {

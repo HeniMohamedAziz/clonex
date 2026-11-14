@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { crawlSite } from '../core/crawler.js';
 import { discoverSubdomains } from '../core/subdomains.js';
 import { writeCrawlReport } from '../core/report.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { mirrorFullWebsite } from '../core/mirror.js';
 import { httpGet, runPool } from '../core/net.js';
 import { beginAbortable, endAbortable } from '../core/abort.js';
@@ -145,7 +146,7 @@ export const siteReconModule = {
     }
 
     const baseOutDir = getDefaultOutputDir(process.cwd(), targetUrl);
-    const reconDir = path.join(baseOutDir, 'recon');
+    const reconDir = path.join(baseOutDir, '05-intelligence');
     await fs.mkdir(reconDir, { recursive: true });
 
     console.log('');
@@ -207,6 +208,7 @@ export const siteReconModule = {
         subdomains: subdomainData?.subdomains || null,
         archivedUrls: subdomainData?.archivedUrls || null
       });
+      const dashPath = await updateTargetDashboard(baseOutDir);
 
       const dur = (crawlResult.meta.durationMs / 1000).toFixed(1);
       spinner.succeed(
@@ -264,19 +266,22 @@ export const siteReconModule = {
       `   ${ARC('◈')} ${GOLD('FORMS & TABLES ')} ${chalk.white(`${a.forms.length} forms | ${a.tables.length} HTML tables exported to CSV`)}`
     );
 
-    console.log(`\n  ${RED.bold('▸ DOSSIER ARTIFACTS')}`);
-    console.log(`   ${DIM('REPORT   //')} ${chalk.white(path.join(reconDir, 'REPORT.md'))}`);
-    console.log(`   ${DIM('PAGES    //')} ${chalk.white(path.join(reconDir, 'pages.csv'))}`);
-    console.log(`   ${DIM('CONTENT  //')} ${chalk.white(path.join(reconDir, 'content'))} ${DIM('(Markdown per page)')}`);
-    console.log(`   ${DIM('CONTACTS //')} ${chalk.white(path.join(reconDir, 'contacts.csv'))}`);
-    console.log(`   ${DIM('LINKS    //')} ${chalk.white(path.join(reconDir, 'links'))}`);
-    if (subdomainData) {
-      console.log(`   ${DIM('SUBS     //')} ${chalk.white(path.join(reconDir, 'subdomains.csv'))}`);
-    }
+    console.log(`\n  ${RED.bold('▸ ORGANIZED DOSSIER ARTIFACTS')}`);
+    console.log(`   ${ARC('◈')} ${GOLD('HUD DASHBOARD //')} ${ARC.bold(path.join(baseOutDir, 'DASHBOARD.html'))}`);
+    console.log(`   ${DIM('REPORT        //')} ${chalk.white(path.join(reconDir, 'REPORT.md'))}`);
+    console.log(`   ${DIM('01-SUBDOMAINS //')} ${chalk.white(path.join(reconDir, '01-subdomains'))}`);
+    console.log(`   ${DIM('02-PAGES      //')} ${chalk.white(path.join(reconDir, '02-pages-and-content'))}`);
+    console.log(`   ${DIM('03-APIS/LINKS //')} ${chalk.white(path.join(reconDir, '03-apis-and-links'))}`);
+    console.log(`   ${DIM('04-CONTACTS   //')} ${chalk.white(path.join(reconDir, '04-contacts-and-forms'))}`);
     console.log('');
 
     while (true) {
       const subOptions = [
+        {
+          id: 'open-dashboard',
+          title: 'Open Interactive HUD Dashboard in Browser (DASHBOARD.html)',
+          description: 'Offline interactive viewer for all pages, subdomains, APIs, contacts & Markdown'
+        },
         {
           id: 'subs',
           title: `Subdomains & Live Hosts [${subdomainData ? subdomainData.subdomains.length : Object.keys(a.hosts).length}]`,
@@ -309,8 +314,8 @@ export const siteReconModule = {
         },
         {
           id: 'open-folder',
-          title: 'Open Intelligence Dossier in Explorer',
-          description: reconDir
+          title: 'Open Target Folder in Explorer',
+          description: baseOutDir
         }
       ];
 
@@ -319,7 +324,12 @@ export const siteReconModule = {
       });
       if (!action) break;
 
-      if (action.id === 'subs') {
+      if (action.id === 'open-dashboard') {
+        const dashFile = path.join(baseOutDir, 'DASHBOARD.html');
+        if (process.platform === 'win32') {
+          spawn('cmd.exe', ['/c', 'start', '""', dashFile], { detached: true, stdio: 'ignore' }).unref();
+        }
+      } else if (action.id === 'subs') {
         if (subdomainData && subdomainData.subdomains.length > 0) {
           console.log(`\n  ${RED.bold(`▸ SUBDOMAINS [${subdomainData.subdomains.length}]`)}`);
           subdomainData.subdomains.slice(0, 100).forEach((s, i) => {
@@ -379,7 +389,7 @@ export const siteReconModule = {
         }
         await pauseForEnter();
       } else if (action.id === 'download-all') {
-        const dumpDir = path.join(reconDir, 'downloaded-files');
+        const dumpDir = path.join(reconDir, '07-downloaded-files');
         await fs.mkdir(dumpDir, { recursive: true });
         const targets = [
           ...a.documents.map((d) => ({ url: d.url, folder: 'documents' })),
@@ -410,7 +420,7 @@ export const siteReconModule = {
       } else if (action.id === 'mirror-site') {
         const limitStr = await askInput('MAX PAGES TO 1:1 CLONE', String(Math.min(25, crawlResult.pages.length)));
         const limit = Math.max(1, parseInt(limitStr, 10) || 15);
-        const mirrorDir = path.join(baseOutDir, 'mirror');
+        const mirrorDir = path.join(baseOutDir, '06-site-mirror');
         const mToken = beginAbortable();
         const mSpinner = createCloneXSpinner('MIRRORING DISCOVERED PAGES').start();
         try {
@@ -426,6 +436,7 @@ export const siteReconModule = {
             token: mToken,
             onProgress: (msg) => mSpinner.update(msg)
           });
+          await updateTargetDashboard(baseOutDir);
           mSpinner.succeed(`MIRRORED ${res.clonedPages.filter((p) => !p.error).length} PAGES -> ${mirrorDir}`);
         } catch (err) {
           mSpinner.fail(`MIRROR ERROR: ${err.message}`);
@@ -435,7 +446,7 @@ export const siteReconModule = {
         await pauseForEnter();
       } else if (action.id === 'open-folder') {
         if (process.platform === 'win32') {
-          spawn('explorer.exe', [reconDir], { detached: true, stdio: 'ignore' }).unref();
+          spawn('explorer.exe', [baseOutDir], { detached: true, stdio: 'ignore' }).unref();
         }
       }
     }

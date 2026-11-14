@@ -16,6 +16,7 @@ import { installSigintHandler, beginAbortable, endAbortable } from './core/abort
 import { discoverSubdomains } from './core/subdomains.js';
 import { crawlSite } from './core/crawler.js';
 import { writeCrawlReport } from './core/report.js';
+import { updateTargetDashboard } from './core/dashboard.js';
 import { mirrorFullWebsite } from './core/mirror.js';
 
 const RED = chalk.hex('#EF4444');
@@ -144,7 +145,7 @@ export async function runCli(depSummary = null) {
       const targetUrl = normalizeInputUrl(rawUrl);
       const host = new URL(targetUrl).hostname;
       const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
-      const reconDir = path.join(baseOut, 'recon');
+      const reconDir = path.join(baseOut, '05-intelligence');
       const token = beginAbortable();
       const spinner = createCloneXSpinner('ENGAGING ECOSYSTEM RECON').start();
 
@@ -177,9 +178,10 @@ export async function runCli(depSummary = null) {
           subdomains: subRes?.subdomains,
           archivedUrls: subRes?.archivedUrls
         });
+        const dashPath = await updateTargetDashboard(baseOut);
 
         spinner.succeed(
-          `RECON COMPLETE: ${crawlRes.pages.length} PAGES // ${subRes ? subRes.subdomains.length : 1} HOSTS -> ${reconDir}`
+          `RECON COMPLETE: ${crawlRes.pages.length} PAGES // ${subRes ? subRes.subdomains.length : 1} HOSTS -> ${dashPath}`
         );
       } finally {
         endAbortable();
@@ -197,7 +199,7 @@ export async function runCli(depSummary = null) {
       renderBanner('FULL SITE MIRROR');
       const targetUrl = normalizeInputUrl(rawUrl);
       const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
-      const mirrorDir = path.join(baseOut, 'mirror');
+      const mirrorDir = path.join(baseOut, '06-site-mirror');
       const token = beginAbortable();
       const spinner = createCloneXSpinner('ENGAGING MULTI-PAGE MIRROR').start();
 
@@ -210,6 +212,7 @@ export async function runCli(depSummary = null) {
           token,
           onProgress: (m) => spinner.update(m)
         });
+        await updateTargetDashboard(baseOut);
         spinner.succeed(
           `MIRROR COMPLETE: ${res.clonedPages.filter((p) => !p.error).length} PAGES -> ${res.dashboardPath}`
         );

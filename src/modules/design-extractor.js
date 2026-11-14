@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import chalk from 'chalk';
 import { captureWebpage } from '../capturer.js';
+import { generatePalettePreviewHtml, updateTargetDashboard } from '../core/dashboard.js';
 import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
@@ -39,7 +40,8 @@ export const designExtractorModule = {
     if (!targetUrl) return;
 
     const outputDir = getDefaultOutputDir(process.cwd(), targetUrl);
-    await fs.mkdir(outputDir, { recursive: true });
+    const designDir = path.join(outputDir, '03-design-system');
+    await fs.mkdir(designDir, { recursive: true });
 
     console.log('');
     const spinner = createCloneXSpinner('SCANNING COMPUTED STYLES').start();
@@ -54,7 +56,7 @@ export const designExtractorModule = {
       });
 
       const tokens = captureData.designTokens;
-      const tokensPath = path.join(outputDir, 'design-tokens.json');
+      const tokensPath = path.join(designDir, 'design-tokens.json');
       await fs.writeFile(tokensPath, JSON.stringify(tokens, null, 2), 'utf-8');
 
       const palette = {};
@@ -81,8 +83,11 @@ export const designExtractorModule = {
   plugins: []
 };
 `;
-      const twPath = path.join(outputDir, 'tailwind.config.js');
+      const twPath = path.join(designDir, 'tailwind.config.js');
       await fs.writeFile(twPath, tailwindConfig, 'utf-8');
+      const previewPath = path.join(designDir, 'palette-preview.html');
+      await generatePalettePreviewHtml(tokens, previewPath);
+      await updateTargetDashboard(outputDir);
 
       spinner.succeed(`TOKENS EXTRACTED: "${captureData.title}"`);
 
@@ -101,6 +106,7 @@ export const designExtractorModule = {
       console.log(`\n  ${RED.bold('▸ ARTIFACTS')}`);
       console.log(`   ${ARC('◈')} ${chalk.white(tokensPath)}`);
       console.log(`   ${ARC('◈')} ${chalk.white(twPath)}`);
+      console.log(`   ${ARC('◈')} ${chalk.white(previewPath)}`);
     } catch (err) {
       spinner.fail(`ABORTED: ${err.message}`);
     }

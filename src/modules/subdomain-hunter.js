@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { discoverSubdomains } from '../core/subdomains.js';
 import { toCsv } from '../core/report.js';
+import { updateTargetDashboard } from '../core/dashboard.js';
 import { beginAbortable, endAbortable } from '../core/abort.js';
 import { getDefaultOutputDir, executeCloneJob } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
@@ -28,7 +29,7 @@ export const subdomainHunterModule = {
 
     const host = new URL(targetUrl).hostname;
     const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
-    const outDir = path.join(baseOut, 'subdomains');
+    const outDir = path.join(baseOut, '05-intelligence', '01-subdomains');
     await fs.mkdir(outDir, { recursive: true });
 
     console.log('');
@@ -49,7 +50,7 @@ export const subdomainHunterModule = {
 
       const jsonPath = path.join(outDir, 'subdomains.json');
       const csvPath = path.join(outDir, 'subdomains.csv');
-      const archivePath = path.join(outDir, 'wayback-urls.txt');
+      const archivePath = path.join(outDir, 'wayback-archive-urls.txt');
 
       await fs.writeFile(jsonPath, JSON.stringify(result, null, 2), 'utf-8');
       await fs.writeFile(
@@ -77,6 +78,8 @@ export const subdomainHunterModule = {
           'utf-8'
         );
       }
+
+      await updateTargetDashboard(baseOut);
 
       const alive = result.subdomains.filter((s) => s.alive);
       spinner.succeed(

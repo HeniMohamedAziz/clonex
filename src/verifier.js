@@ -31,7 +31,15 @@ export function createStaticServer(rootDir) {
     try {
       const parsedUrl = new URL(req.url, 'http://127.0.0.1');
       let safePath = decodeURIComponent(parsedUrl.pathname);
-      if (safePath === '/') safePath = '/index.html';
+      if (safePath === '/') {
+        if (existsSync(path.join(rootDir, 'DASHBOARD.html'))) {
+          safePath = '/DASHBOARD.html';
+        } else if (existsSync(path.join(rootDir, '01-html-clone', 'index.html'))) {
+          safePath = '/01-html-clone/index.html';
+        } else {
+          safePath = '/index.html';
+        }
+      }
 
       const filePath = path.join(rootDir, safePath);
       if (!filePath.startsWith(path.resolve(rootDir))) {
@@ -63,6 +71,7 @@ export function createStaticServer(rootDir) {
 export async function verifyCloneFidelity({
   outputDir,
   originalScreenshotPath,
+  cloneScreenshotPath = path.join(outputDir, 'screenshot-clone.png'),
   viewportWidth = 1440,
   viewportHeight = 900,
   onProgress = () => {}
@@ -72,7 +81,7 @@ export async function verifyCloneFidelity({
   const { port } = server.address();
   const localUrl = `http://127.0.0.1:${port}/index.html`;
 
-  const cloneScreenshotPath = path.join(outputDir, 'screenshot-clone.png');
+  await fs.mkdir(path.dirname(cloneScreenshotPath), { recursive: true });
 
   onProgress('Verifying cloned page output...');
   const browser = await launchBrowser(['--font-render-hinting=none']);
