@@ -66,7 +66,7 @@ export async function runCli(depSummary = null) {
 
   program
     .name('clonex')
-    .description('CloneX — Full-Site 1:1 Cloner, Subdomain Hunter & Deep Intelligence Suite')
+    .description('clonex - website cloner, subdomain scanner and scraper')
     .version('2.0.0');
 
   program

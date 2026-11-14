@@ -1,8 +1,8 @@
 # clonex
 
-Full-site 1:1 webpage cloner, subdomain & archive hunter, and deep website intelligence scraper.
+CLI tool for cloning websites 1:1 (HTML/CSS + React/Tailwind), enumerating subdomains, and scraping pages, API routes, and assets.
 
-## Quick Start
+## Setup
 
 ```bash
 git clone https://github.com/HeniMohamedAziz/clonex.git
@@ -10,38 +10,43 @@ cd clonex
 node bin/clone.js
 ```
 
-On first launch, `clonex` checks all required packages and browser engines and prompts `(Y/N)` to install anything missing.
+On first run, `clonex` checks for dependencies and Chromium and asks `(Y/N)` to install anything missing.
 
-*(Run `npm link` once to launch `clonex` from any directory, or double-click `clonex.bat` on Windows).*
-
-## Output Structure
-
-Every target inside `./cloned-sites/<domain>/` is organized into numbered folders alongside a standalone offline viewer (`DASHBOARD.html`) that opens directly in any browser without needing a server:
-
-```text
-cloned-sites/<domain>/
-├── DASHBOARD.html                      # Interactive offline HUD viewer (Overview, Subdomains, Pages, Content Reader, APIs, Contacts)
-├── 01-html-clone/                      # 1:1 visual clone (index.html, styles.css, single-file.html, assets/)
-├── 02-react-project/                   # Ready-to-run Vite + React + Tailwind CSS project
-├── 03-design-system/                   # design-tokens.json, tailwind.config.js, palette-preview.html
-├── 04-screenshots/                     # original.png, clone-verified.png, responsive/
-├── 05-intelligence/                    # Full reconnaissance & scraped data
-│   ├── REPORT.md                       # Formatted Markdown summary report
-│   ├── 01-subdomains/                  # subdomains.csv, subdomains.json, wayback-archive-urls.txt
-│   ├── 02-pages-and-content/           # pages-summary.csv, sitemap.xml, markdown-by-host/<host>/*.md
-│   ├── 03-apis-and-links/              # internal-api-endpoints.txt, third-party-endpoints.txt, internal-pages.txt, external-links.txt, documents-and-files.txt
-│   ├── 04-contacts-and-forms/          # contacts-and-socials.csv, emails.txt, phones.txt, socials.json, forms.json
-│   ├── 05-tables-and-structured-data/  # tech-stack.json, tables/*.csv
-│   └── 06-raw-data/                    # full-crawl.json, pages-full.jsonl, link-graph.json
-└── 06-site-mirror/                     # Multi-page full website & subdomain offline mirror (SITE-INDEX.html)
-```
-
-## Direct CLI Commands
+To run `clonex` from anywhere:
 
 ```bash
-clonex                                      # Launch interactive HUD menu
-clonex https://example.com                  # 1:1 clone a single URL
-clonex recon https://example.com -m 250     # Full ecosystem recon & everything scraper
-clonex mirror https://example.com -m 25 -s  # Multi-page full website & subdomain mirror
-clonex preview ./cloned-sites/example.com   # Serve a cloned directory locally
+npm link
 ```
+
+## Usage
+
+Run `clonex` with no arguments to open the interactive menu, or pass commands directly:
+
+```bash
+# interactive menu
+clonex
+
+# 1:1 clone a single page
+clonex https://example.com
+
+# full recon (subdomains, pages, markdown content, API routes, contacts, files)
+clonex recon https://example.com -m 250
+
+# mirror a multi-page site & subdomains for offline browsing
+clonex mirror https://example.com -m 25 -s
+
+# serve a cloned folder locally
+clonex preview ./cloned-sites/example.com
+```
+
+## Output
+
+Captured sites are saved under `./cloned-sites/<domain>/`:
+
+- `DASHBOARD.html` - local offline viewer for browsing scraped data and screenshots
+- `01-html-clone/` - 1:1 static HTML/CSS clone, local assets, and `single-file.html`
+- `02-react-project/` - Vite + React + Tailwind project
+- `03-design-system/` - extracted colors, fonts, CSS variables, and `tailwind.config.js`
+- `04-screenshots/` - original, verified clone, and responsive viewport screenshots
+- `05-intelligence/` - subdomains, page markdown, API endpoints, links, contacts, forms, and CSV tables
+- `06-site-mirror/` - multi-page offline mirror (`SITE-INDEX.html`)

@@ -228,7 +228,7 @@ function buildMarkdownReport(result, extras, internalEndpoints, externalEndpoint
   const ok = pages.filter((p) => p.status >= 200 && p.status < 400).length;
   const words = pages.reduce((s, p) => s + (p.wordCount || 0), 0);
   const lines = [
-    `# CloneX Intelligence Dossier — ${meta.startHost}`,
+    `# ${meta.startHost}`,
     '',
     `| Metric | Value |`,
     `| --- | --- |`,
@@ -289,7 +289,7 @@ function buildMarkdownReport(result, extras, internalEndpoints, externalEndpoint
       .slice(0, 50)
       .forEach((f) =>
         lines.push(
-          `- \`${f.method} ${f.action}\` (on ${f.page}) — Fields: \`${f.fields.map((x) => x.name || x.type).join(', ')}\``
+          `- \`${f.method} ${f.action}\` (${f.page}) -> \`${f.fields.map((x) => x.name || x.type).join(', ')}\``
         )
       );
     lines.push('');
