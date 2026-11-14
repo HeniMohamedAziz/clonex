@@ -1,0 +1,6 @@
+node_modules/
+cloned-sites/
+dist/
+.env
+*.log
+.DS_Store

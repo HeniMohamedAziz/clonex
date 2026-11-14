@@ -1,0 +1,25 @@
+{
+  "name": "clonex",
+  "version": "1.0.0",
+  "description": "CLI tool to capture live webpages and export clean HTML/CSS and React/Tailwind components.",
+  "type": "module",
+  "author": "Heni Mohamed Aziz",
+  "license": "MIT",
+  "bin": {
+    "clonex": "./bin/clone.js"
+  },
+  "scripts": {
+    "start": "node ./bin/clone.js",
+    "clone": "node ./bin/clone.js",
+    "preview": "node ./bin/clone.js preview"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "cheerio": "^1.0.0",
+    "commander": "^12.1.0",
+    "ora": "^8.1.0",
+    "playwright": "^1.52.0",
+    "pngjs": "^7.0.0",
+    "prettier": "^3.3.3"
+  }
+}
