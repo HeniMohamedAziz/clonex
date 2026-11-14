@@ -32,8 +32,7 @@ export function renderBanner(subtitle = 'Web Design Capture & Reverse-Engineerin
   );
 }
 
-export async function playBootAnimation(skip = false) {
-  if (skip) return;
+export async function playBootAnimation(depSummary = null) {
   clearScreen();
   console.log('');
   LOGO_LINES.forEach((line, idx) => {
@@ -41,6 +40,17 @@ export async function playBootAnimation(skip = false) {
     console.log(chalk.hex(color).bold(line));
   });
   console.log('');
+
+  if (depSummary) {
+    console.log(`  ${chalk.gray('System & Dependency Check:')}`);
+    for (const item of depSummary) {
+      await new Promise((r) => setTimeout(r, 45));
+      console.log(
+        `   ${chalk.green.bold('✔')} ${chalk.white(item.name.padEnd(22, ' '))} ${chalk.gray(item.detail || 'OK')}`
+      );
+    }
+    console.log('');
+  }
 
   const steps = [
     'Initializing CloneX Core...',
@@ -62,7 +72,7 @@ export async function playBootAnimation(skip = false) {
     process.stdout.write(
       `\r  ${chalk.hex('#00F5D4')('[')}${chalk.hex('#7209B7')(filled)}${chalk.gray(empty)}${chalk.hex('#00F5D4')(']')} ${chalk.bold.white(`${percent}%`)} ${chalk.gray('│')} ${chalk.cyan(stepText.padEnd(36, ' '))}`
     );
-    await new Promise((r) => setTimeout(r, 32));
+    await new Promise((r) => setTimeout(r, 28));
   }
   await new Promise((r) => setTimeout(r, 180));
   clearScreen();

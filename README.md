@@ -2,24 +2,17 @@
 
 Interactive CLI toolkit to clone live webpages 1:1, extract all site pages/links and website intelligence, capture responsive screenshots, harvest assets, and export clean HTML/CSS and React/Tailwind components.
 
-## Installation
+## Quick Start
+
+Clone the repository and launch right away — `clonex` automatically checks for required packages and browser engines on startup and prompts `(Y/N)` to install anything missing:
 
 ```bash
 git clone https://github.com/HeniMohamedAziz/clonex.git
 cd clonex
-npm install
-npm link
+node bin/clone.js
 ```
 
-## Quick Start
-
-Launch the interactive menu from any terminal:
-
-```bash
-clonex
-```
-
-*(On Windows, you can also run `.\clonex.bat` or `npm start`).*
+*(On Windows, you can also double-click `clonex.bat` or run `npm start`. Run `npm link` once if you want to launch `clonex` from any directory).*
 
 ## Features
 

@@ -3,10 +3,12 @@ import path from 'path';
 import { chromium } from 'playwright';
 
 export function resolveChromiumExecutable() {
-  const defaultExec = chromium.executablePath();
-  if (defaultExec && fs.existsSync(defaultExec)) {
-    return defaultExec;
-  }
+  try {
+    const defaultExec = chromium.executablePath();
+    if (defaultExec && fs.existsSync(defaultExec)) {
+      return defaultExec;
+    }
+  } catch {}
 
   const localAppData =
     process.env.LOCALAPPDATA ||
@@ -34,6 +36,23 @@ export function resolveChromiumExecutable() {
         }
       }
     } catch {}
+  }
+
+  const systemCandidates = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    path.join(localAppData, 'Google\\Chrome\\Application\\chrome.exe'),
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  ];
+
+  for (const sysPath of systemCandidates) {
+    if (fs.existsSync(sysPath)) {
+      return sysPath;
+    }
   }
 
   return null;
