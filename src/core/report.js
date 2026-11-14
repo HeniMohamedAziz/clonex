@@ -52,7 +52,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
     meta.rootDomain
   );
 
-  // 01-subdomains
   if (extras.subdomains) {
     await write(intelDir, '01-subdomains/subdomains.json', JSON.stringify(extras.subdomains, null, 2));
     await write(
@@ -82,7 +81,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
     );
   }
 
-  // 02-pages-and-content
   await write(
     intelDir,
     '02-pages-and-content/pages-summary.csv',
@@ -137,7 +135,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
     );
   }
 
-  // 03-apis-and-links
   await write(intelDir, '03-apis-and-links/internal-api-endpoints.txt', internalEndpoints.join('\n'));
   await write(intelDir, '03-apis-and-links/third-party-endpoints.txt', externalEndpoints.join('\n'));
   await write(intelDir, '03-apis-and-links/internal-pages.txt', pages.map((p) => p.url).join('\n'));
@@ -164,7 +161,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
     );
   }
 
-  // 04-contacts-and-forms
   await write(
     intelDir,
     '04-contacts-and-forms/contacts-and-socials.csv',
@@ -182,7 +178,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
   await write(intelDir, '04-contacts-and-forms/socials.json', JSON.stringify(a.socials, null, 2));
   await write(intelDir, '04-contacts-and-forms/forms.json', JSON.stringify(a.forms, null, 2));
 
-  // 05-tables-and-structured-data
   await write(intelDir, '05-tables-and-structured-data/tech-stack.json', JSON.stringify(a.tech, null, 2));
   for (const t of a.tables.slice(0, 300)) {
     await write(
@@ -192,7 +187,6 @@ export async function writeCrawlReport(result, intelDir, extras = {}) {
     );
   }
 
-  // 06-raw-data
   await write(
     intelDir,
     '06-raw-data/full-crawl.json',

@@ -390,7 +390,6 @@ export async function updateTargetDashboard(baseOutDir) {
       };
     });
 
-    // Overview
     let ov = '<div class="summary-bar">' +
       '<div class="metric"><span>PAGES</span><strong>' + pages.length + '</strong></div>' +
       '<div class="metric"><span>WORDS</span><strong>' + words.toLocaleString() + '</strong></div>' +
@@ -436,14 +435,12 @@ export async function updateTargetDashboard(baseOutDir) {
     ov += '</div></div>';
     document.getElementById('panel-overview').innerHTML = ov;
 
-    // Subdomains
     document.getElementById('panel-subdomains').innerHTML =
       '<div class="box"><div class="box-head"><span>Subdomains & Hosts</span><span>' + subs.length + '</span></div>' +
       '<table><thead><tr><th>Host</th><th>Status</th><th>IPs</th><th>Server</th><th>Title</th><th>Source</th></tr></thead><tbody>' +
       (subs.length ? subs.map(s => '<tr><td><a href="' + esc(s.url || 'https://' + s.host) + '" target="_blank">' + esc(s.host) + '</a></td><td>' + (s.status || 'DEAD') + '</td><td style="color:var(--muted)">' + esc((s.ips || []).join(', ')) + '</td><td>' + esc(s.server || '') + '</td><td>' + esc(s.title || '') + '</td><td style="color:var(--muted)">' + esc((s.sources || []).join(', ')) + '</td></tr>').join('') : '<tr><td colspan="6">No subdomain scan data.</td></tr>') +
       '</tbody></table></div>';
 
-    // Pages
     window.toggleRead = (i) => {
       const el = document.getElementById('read-' + i);
       if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
@@ -466,7 +463,6 @@ export async function updateTargetDashboard(baseOutDir) {
       document.getElementById('ptable').innerHTML = renderPages(e.target.value);
     });
 
-    // APIs
     document.getElementById('panel-apis').innerHTML =
       '<div class="grid-2">' +
       '<div class="box"><div class="box-head"><span>Target API & Data Routes</span><span>' + intEps.length + '</span></div><table><tbody>' +
@@ -476,7 +472,6 @@ export async function updateTargetDashboard(baseOutDir) {
       (extEps.length ? extEps.map(u => '<tr><td><a href="' + esc(u) + '" target="_blank">' + esc(u) + '</a></td></tr>').join('') : '<tr><td>None</td></tr>') +
       '</tbody></table></div></div>';
 
-    // Contacts
     document.getElementById('panel-contacts').innerHTML =
       '<div class="grid-2">' +
       '<div class="box"><div class="box-head"><span>Emails & Phones</span></div><table><thead><tr><th>Type</th><th>Value</th><th>Hits</th></tr></thead><tbody>' +
@@ -489,7 +484,6 @@ export async function updateTargetDashboard(baseOutDir) {
       (agg.forms || []).map(f => '<tr><td style="color:var(--gold)">' + esc(f.method) + '</td><td>' + esc(f.action) + '</td><td>' + esc(f.page) + '</td><td style="color:var(--muted)">' + esc((f.fields || []).map(x => x.name || x.type).join(', ')) + '</td></tr>').join('') +
       '</tbody></table></div>';
 
-    // Links
     document.getElementById('panel-links').innerHTML =
       '<div class="grid-2">' +
       '<div class="box"><div class="box-head"><span>Documents (' + (agg.documents?.length || 0) + ')</span></div><table><tbody>' +

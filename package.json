@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "CLI tool to capture live webpages and export clean HTML/CSS and React/Tailwind components.",
   "type": "module",
-  "author": "Heni Mohamed Aziz",
   "license": "MIT",
   "bin": {
     "clonex": "./bin/clone.js"
