@@ -1,9 +1,13 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { spawn } from 'child_process';
-import * as cheerio from 'cheerio';
 import chalk from 'chalk';
-import { launchBrowser, navigateSafely } from '../browser-finder.js';
+import { crawlSite } from '../core/crawler.js';
+import { discoverSubdomains } from '../core/subdomains.js';
+import { writeCrawlReport } from '../core/report.js';
+import { mirrorFullWebsite } from '../core/mirror.js';
+import { httpGet, runPool } from '../core/net.js';
+import { beginAbortable, endAbortable } from '../core/abort.js';
 import { getDefaultOutputDir, executeCloneJob } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, selectFromMenu, askInput, pauseForEnter } from '../ui/prompt.js';
@@ -13,548 +17,299 @@ const GOLD = chalk.hex('#FBBF24');
 const ARC = chalk.hex('#00E5FF');
 const DIM = chalk.hex('#52525B');
 
-const SOCIAL_DOMAINS = [
-  { name: 'GitHub', pattern: /github\.com\//i },
-  { name: 'X/Twitter', pattern: /(twitter\.com|x\.com)\//i },
-  { name: 'LinkedIn', pattern: /linkedin\.com\//i },
-  { name: 'Instagram', pattern: /instagram\.com\//i },
-  { name: 'YouTube', pattern: /youtube\.com\//i },
-  { name: 'Discord', pattern: /(discord\.gg|discord\.com\/invite)\//i },
-  { name: 'Facebook', pattern: /facebook\.com\//i },
-  { name: 'TikTok', pattern: /tiktok\.com\//i },
-  { name: 'Telegram', pattern: /t\.me\//i }
-];
-
-async function fetchTextSafe(url, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-      },
-      signal: controller.signal
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function discoverRobotsAndSitemap(originUrl) {
-  const robotsUrl = `${originUrl}/robots.txt`;
-  const defaultSitemapUrl = `${originUrl}/sitemap.xml`;
-  const sitemapUrls = new Set();
-  const sitemapPages = new Set();
-  const disallowedPaths = [];
-
-  const robotsTxt = await fetchTextSafe(robotsUrl);
-  if (robotsTxt) {
-    for (const line of robotsTxt.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (/^sitemap:/i.test(trimmed)) {
-        const sm = trimmed.replace(/^sitemap:\s*/i, '').trim();
-        if (sm) sitemapUrls.add(sm);
-      } else if (/^disallow:/i.test(trimmed)) {
-        const dis = trimmed.replace(/^disallow:\s*/i, '').trim();
-        if (dis && dis !== '/') disallowedPaths.push(dis);
-      }
-    }
-  }
-
-  if (sitemapUrls.size === 0) {
-    sitemapUrls.add(defaultSitemapUrl);
-  }
-
-  for (const smUrl of Array.from(sitemapUrls).slice(0, 3)) {
-    const xml = await fetchTextSafe(smUrl);
-    if (xml && xml.includes('<loc>')) {
-      const locRegex = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
-      let match;
-      while ((match = locRegex.exec(xml)) !== null) {
-        const loc = match[1].trim();
-        if (loc.endsWith('.xml')) {
-          sitemapUrls.add(loc);
-        } else {
-          sitemapPages.add(loc);
-        }
-      }
-    }
-  }
-
-  return {
-    hasRobotsTxt: Boolean(robotsTxt),
-    disallowedPaths: Array.from(new Set(disallowedPaths)).slice(0, 30),
-    sitemapPages: Array.from(sitemapPages).slice(0, 250)
-  };
-}
-
 export async function analyzeWebsiteIntel(targetUrl, onProgress = () => {}) {
-  const parsedTarget = new URL(targetUrl);
-  const origin = parsedTarget.origin;
-
-  onProgress('ENGAGING BROWSER & NETWORK INTERCEPT');
-  const browser = await launchBrowser(['--disable-web-security'], targetUrl);
-
-  try {
-    const context = await browser.newContext({
-      viewport: { width: 1440, height: 900 },
-      ignoreHTTPSErrors: true
-    });
-    const page = await context.newPage();
-
-    let mainResponseHeaders = {};
-    let statusCode = null;
-    const apiAndScriptUrls = new Set();
-
-    page.on('response', (res) => {
-      const url = res.url();
-      const type = res.request().resourceType();
-      if (url === targetUrl || url === `${targetUrl}/` || !statusCode) {
-        statusCode = res.status();
-        mainResponseHeaders = res.headers();
-      }
-      if (type === 'xhr' || type === 'fetch') {
-        apiAndScriptUrls.add(url);
-      }
-    });
-
-    onProgress(`SCANNING ${targetUrl}`);
-    await navigateSafely(page, targetUrl, 30000);
-
-    onProgress('EXTRACTING ROUTES, ENDPOINTS & FINGERPRINTS');
-
-    const pageData = await page.evaluate(() => {
-      const getMeta = (selector) =>
-        document.querySelector(selector)?.getAttribute('content')?.trim() || null;
-
-      const meta = {
-        title: document.title || '',
-        description:
-          getMeta('meta[name="description"]') ||
-          getMeta('meta[property="og:description"]'),
-        keywords: getMeta('meta[name="keywords"]'),
-        author: getMeta('meta[name="author"]'),
-        generator: getMeta('meta[name="generator"]'),
-        themeColor: getMeta('meta[name="theme-color"]'),
-        canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') || null,
-        language: document.documentElement.getAttribute('lang') || null,
-        ogTitle: getMeta('meta[property="og:title"]'),
-        ogType: getMeta('meta[property="og:type"]'),
-        ogImage: getMeta('meta[property="og:image"]'),
-        ogSiteName: getMeta('meta[property="og:site_name"]'),
-        twitterCard: getMeta('meta[name="twitter:card"]'),
-        twitterSite: getMeta('meta[name="twitter:site"]')
-      };
-
-      const techStack = new Set();
-      if (window.__NEXT_DATA__ || document.getElementById('__next')) techStack.add('Next.js');
-      if (window.__NUXT__ || document.getElementById('__nuxt')) techStack.add('Nuxt.js');
-      if (window.__remixContext) techStack.add('Remix');
-      if (document.querySelector('[data-astro-cid]') || document.querySelector('astro-island'))
-        techStack.add('Astro');
-      if (
-        window.React ||
-        document.querySelector('[data-reactroot], [data-reactid]') ||
-        Array.from(document.scripts).some((s) => /react/i.test(s.src))
-      )
-        techStack.add('React');
-      if (window.Vue || document.querySelector('[data-v-]')) techStack.add('Vue.js');
-      if (window.angular || document.querySelector('[ng-version], [ng-app]'))
-        techStack.add('Angular');
-      if (document.querySelector('[class*="svelte-"]')) techStack.add('Svelte');
-      if (window.Shopify || document.querySelector('link[href*="cdn.shopify.com"]'))
-        techStack.add('Shopify');
-      if (
-        document.querySelector('link[href*="wp-content"], script[src*="wp-includes"]') ||
-        /wordpress/i.test(meta.generator || '')
-      )
-        techStack.add('WordPress');
-      if (document.querySelector('html[data-wf-site], html[data-wf-page]'))
-        techStack.add('Webflow');
-      if (document.querySelector('[data-framer-appear-id], [name="framer-search-index"]'))
-        techStack.add('Framer');
-      if (window.jQuery || window.$?.fn?.jquery) techStack.add('jQuery');
-      if (window.gsap) techStack.add('GSAP');
-      if (window.THREE) techStack.add('Three.js');
-      if (
-        document.querySelector(
-          '.flex, .grid, .items-center, .justify-between, .text-sm, .bg-white'
-        )
-      )
-        techStack.add('Tailwind CSS');
-      if (document.querySelector('link[href*="bootstrap"], .container-fluid, .row .col-md-'))
-        techStack.add('Bootstrap');
-      if (
-        window.gtag ||
-        window.ga ||
-        window.dataLayer ||
-        Array.from(document.scripts).some((s) => /googletagmanager|google-analytics/i.test(s.src))
-      )
-        techStack.add('Google Analytics');
-
-      const rawLinks = Array.from(document.querySelectorAll('a[href]')).map((a) => ({
-        href: a.getAttribute('href') || '',
-        text: (a.innerText || a.getAttribute('aria-label') || '').trim().slice(0, 80)
-      }));
-
-      const forms = Array.from(document.querySelectorAll('form')).map((f) => ({
-        action: f.getAttribute('action') || window.location.pathname,
-        method: (f.getAttribute('method') || 'GET').toUpperCase(),
-        inputs: Array.from(f.querySelectorAll('input, select, textarea'))
-          .map((i) => i.name || i.type || i.id)
-          .filter(Boolean)
-      }));
-
-      const scripts = Array.from(document.querySelectorAll('script[src]'))
-        .map((s) => s.src)
-        .filter(Boolean);
-
-      const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
-        .map((h) => ({
-          tag: h.tagName.toLowerCase(),
-          text: (h.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 120)
-        }))
-        .filter((h) => h.text.length > 0)
-        .slice(0, 40);
-
-      const bodyText = document.body?.innerText || '';
-      const emailMatches =
-        bodyText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-      const phoneMatches =
-        bodyText.match(/(?:\+\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4}/g) || [];
-
-      const jsonLd = Array.from(
-        document.querySelectorAll('script[type="application/ld+json"]')
-      )
-        .map((s) => {
-          try {
-            return JSON.parse(s.textContent);
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean);
-
-      return {
-        finalUrl: window.location.href,
-        meta,
-        techStack: Array.from(techStack),
-        rawLinks,
-        forms,
-        scripts,
-        headings,
-        emailMatches,
-        phoneMatches,
-        jsonLd
-      };
-    });
-
-    onProgress('PROBING ROBOTS.TXT & SITEMAP.XML');
-    const sitemapInfo = await discoverRobotsAndSitemap(origin);
-
-    const internalPagesMap = new Map();
-    const externalLinksSet = new Set();
-    const socialLinks = [];
-    const emails = new Set(pageData.emailMatches.map((e) => e.toLowerCase()));
-    const phones = new Set(pageData.phoneMatches.map((p) => p.trim()));
-
-    for (const item of pageData.rawLinks) {
-      const raw = item.href.trim();
-      if (!raw || raw.startsWith('#') || raw.startsWith('javascript:')) continue;
-
-      if (raw.startsWith('mailto:')) {
-        const mail = raw.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
-        if (mail) emails.add(mail);
-        continue;
-      }
-      if (raw.startsWith('tel:')) {
-        const tel = raw.replace(/^tel:/i, '').trim();
-        if (tel) phones.add(tel);
-        continue;
-      }
-
-      try {
-        const resolved = new URL(raw, pageData.finalUrl);
-        resolved.hash = '';
-        const cleanUrl = resolved.href;
-
-        if (resolved.origin === origin) {
-          if (!internalPagesMap.has(cleanUrl)) {
-            internalPagesMap.set(cleanUrl, item.text || resolved.pathname);
-          }
-        } else if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
-          externalLinksSet.add(cleanUrl);
-          for (const soc of SOCIAL_DOMAINS) {
-            if (soc.pattern.test(cleanUrl)) {
-              if (!socialLinks.some((s) => s.url === cleanUrl)) {
-                socialLinks.push({ platform: soc.name, url: cleanUrl });
-              }
-            }
-          }
-        }
-      } catch {}
+  const res = await crawlSite(targetUrl, {
+    maxPages: 1,
+    maxDepth: 0,
+    concurrency: 1,
+    respectRobots: false,
+    renderMode: 'browser',
+    useSitemaps: true,
+    scanJs: true,
+    onProgress
+  });
+  const first = res.pages[0] || {};
+  return {
+    url: first.finalUrl || targetUrl,
+    origin: new URL(targetUrl).origin,
+    scannedAt: res.meta.finishedAt,
+    statusCode: first.status || 200,
+    meta: {
+      title: first.title || '',
+      description: first.description || null,
+      keywords: first.keywords || null,
+      canonical: first.canonical || null,
+      language: first.language || null
+    },
+    techStack: res.aggregate.tech.map((t) => t.name),
+    contacts: {
+      emails: res.aggregate.emails.map((e) => e.value),
+      phones: res.aggregate.phones.map((p) => p.value),
+      socials: res.aggregate.socials
+    },
+    internalPages: (first.links || [])
+      .filter((l) => l.internal)
+      .map((l) => ({ url: l.url, path: new URL(l.url).pathname, label: l.text })),
+    externalLinks: res.aggregate.externalLinks.map((e) => e.url),
+    apiEndpoints: res.aggregate.endpoints,
+    forms: res.aggregate.forms,
+    headings: first.headings || {},
+    sitemap: {
+      hasRobotsTxt: Object.keys(res.aggregate.robots || {}).length > 0,
+      totalSitemapUrls: res.meta.sitemaps?.urls || 0
     }
-
-    for (const smPageUrl of sitemapInfo.sitemapPages) {
-      try {
-        const u = new URL(smPageUrl, origin);
-        if (u.origin === origin && !internalPagesMap.has(u.href)) {
-          internalPagesMap.set(u.href, u.pathname);
-        }
-      } catch {}
-    }
-
-    const serverHeader = mainResponseHeaders['server'] || null;
-    const poweredBy = mainResponseHeaders['x-powered-by'] || null;
-    if (serverHeader) pageData.techStack.push(`Server: ${serverHeader}`);
-    if (poweredBy) pageData.techStack.push(`Powered-By: ${poweredBy}`);
-    if (mainResponseHeaders['cf-ray']) pageData.techStack.push('Cloudflare');
-    if (mainResponseHeaders['x-vercel-id']) pageData.techStack.push('Vercel');
-    if (mainResponseHeaders['x-nf-request-id']) pageData.techStack.push('Netlify');
-
-    const internalPages = Array.from(internalPagesMap.entries()).map(([url, label]) => ({
-      url,
-      path: new URL(url).pathname,
-      label
-    }));
-
-    return {
-      url: pageData.finalUrl,
-      origin,
-      scannedAt: new Date().toISOString(),
-      statusCode,
-      meta: pageData.meta,
-      techStack: Array.from(new Set(pageData.techStack)),
-      headers: {
-        server: serverHeader,
-        poweredBy,
-        contentType: mainResponseHeaders['content-type'] || null,
-        cacheControl: mainResponseHeaders['cache-control'] || null,
-        strictTransportSecurity: mainResponseHeaders['strict-transport-security'] || null,
-        contentSecurityPolicy: mainResponseHeaders['content-security-policy'] ? 'Present' : 'None'
-      },
-      contacts: {
-        emails: Array.from(emails),
-        phones: Array.from(phones),
-        socials: socialLinks
-      },
-      internalPages,
-      externalLinks: Array.from(externalLinksSet),
-      apiEndpoints: Array.from(apiAndScriptUrls),
-      scripts: pageData.scripts,
-      forms: pageData.forms,
-      headings: pageData.headings,
-      sitemap: {
-        hasRobotsTxt: sitemapInfo.hasRobotsTxt,
-        disallowedPaths: sitemapInfo.disallowedPaths,
-        totalSitemapUrls: sitemapInfo.sitemapPages.length
-      },
-      jsonLd: pageData.jsonLd
-    };
-  } finally {
-    await browser.close();
-  }
-}
-
-async function deepCrawlInternalLinks(origin, seedUrls, maxPages = 15, onProgress = () => {}) {
-  const visited = new Set();
-  const discovered = new Map();
-  const queue = [...seedUrls];
-
-  for (const u of seedUrls) {
-    discovered.set(u.url, u.label || new URL(u.url).pathname);
-  }
-
-  let crawledCount = 0;
-  while (queue.length > 0 && crawledCount < maxPages) {
-    const current = queue.shift();
-    if (!current || visited.has(current.url)) continue;
-    visited.add(current.url);
-    crawledCount++;
-
-    onProgress(`SPIDERING [${crawledCount}/${maxPages}] ${current.path || current.url}`);
-    const html = await fetchTextSafe(current.url, 7000);
-    if (!html) continue;
-
-    try {
-      const $ = cheerio.load(html);
-      $('a[href]').each((_, el) => {
-        const href = $(el).attr('href');
-        const text = $(el).text().trim().replace(/\s+/g, ' ').slice(0, 60);
-        if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-        try {
-          const resolved = new URL(href, current.url);
-          resolved.hash = '';
-          if (resolved.origin === origin && !discovered.has(resolved.href)) {
-            discovered.set(resolved.href, text || resolved.pathname);
-            queue.push({ url: resolved.href, path: resolved.pathname, label: text });
-          }
-        } catch {}
-      });
-    } catch {}
-  }
-
-  return Array.from(discovered.entries()).map(([url, label]) => ({
-    url,
-    path: new URL(url).pathname,
-    label
-  }));
-}
-
-function formatMarkdownReport(intel) {
-  const lines = [
-    `# Site Recon: ${intel.url}`,
-    ``,
-    `- **Timestamp:** ${intel.scannedAt}`,
-    `- **HTTP Status:** ${intel.statusCode || '200'}`,
-    `- **Title:** ${intel.meta.title || 'N/A'}`,
-    `- **Description:** ${intel.meta.description || 'N/A'}`,
-    `- **Canonical:** ${intel.meta.canonical || 'N/A'}`,
-    `- **Language:** ${intel.meta.language || 'N/A'}`,
-    ``,
-    `## Stack & Infrastructure`,
-    intel.techStack.length > 0
-      ? intel.techStack.map((t) => `- ${t}`).join('\n')
-      : '- Static HTML/CSS/JS',
-    ``,
-    `## Contacts & Profiles`,
-    `- **Emails:** ${intel.contacts.emails.join(', ') || 'None'}`,
-    `- **Phones:** ${intel.contacts.phones.join(', ') || 'None'}`,
-    ...(intel.contacts.socials || []).map((s) => `- **${s.platform}:** ${s.url}`),
-    ``,
-    `## Internal Routes (${intel.internalPages.length})`,
-    ...intel.internalPages.map((p) => `- [${p.path}](${p.url})`),
-    ``,
-    `## External Links (${intel.externalLinks.length})`,
-    ...intel.externalLinks.map((u) => `- ${u}`),
-    ``,
-    `## XHR / API Endpoints (${intel.apiEndpoints.length})`,
-    ...intel.apiEndpoints.map((u) => `- \`${u}\``),
-    ``,
-    `## Headings`,
-    ...intel.headings.map((h) => `- **${h.tag.toUpperCase()}**: ${h.text}`)
-  ];
-  return lines.join('\n');
+  };
 }
 
 export const siteReconModule = {
   id: 'site-recon',
   category: 'Intelligence & Extraction',
-  title: 'Site Recon & Route Extractor',
-  description: 'Internal Routes + Sitemap + Outbound Links + APIs + Stack',
+  title: 'Total Site Recon & Everything Scraper',
+  description: 'Subdomains + All Pages + Sitemaps + JS APIs + Docs + Tables + Contacts',
 
   async run(context) {
-    printSectionHeader('Site Recon & Route Extractor');
+    printSectionHeader('Total Site Recon & Everything Scraper');
 
     const targetUrl = await askUrl('TARGET URL');
     if (!targetUrl) return;
+
+    console.log('');
+    const modes = [
+      {
+        id: 'ecosystem',
+        title: 'Full Ecosystem Deep Scrape (Subdomains + Wayback + All Pages + JS APIs)',
+        description: 'Discover subdomains, pull archive URLs, spider up to 250 pages across all hosts',
+        opts: {
+          discoverSubs: true,
+          includeSubdomains: true,
+          maxPages: 250,
+          maxDepth: 6,
+          concurrency: 10,
+          renderMode: 'http',
+          scanJs: true
+        }
+      },
+      {
+        id: 'domain',
+        title: 'Domain Deep Spider (Up to 200 Pages + Sitemaps + JS Endpoints)',
+        description: 'Fast parallel crawl of target domain, sitemaps, tables, Markdown & contacts',
+        opts: {
+          discoverSubs: false,
+          includeSubdomains: false,
+          maxPages: 200,
+          maxDepth: 5,
+          concurrency: 10,
+          renderMode: 'http',
+          scanJs: true
+        }
+      },
+      {
+        id: 'browser-spa',
+        title: 'Headless Chromium SPA Deep Crawl (Up to 60 Pages)',
+        description: 'Full browser rendering for each page + live XHR/fetch network capture',
+        opts: {
+          discoverSubs: true,
+          includeSubdomains: true,
+          maxPages: 60,
+          maxDepth: 4,
+          concurrency: 4,
+          renderMode: 'browser',
+          scanJs: true
+        }
+      },
+      {
+        id: 'custom',
+        title: 'Custom Recon Parameters',
+        description: 'Configure max pages, depth, subdomain scope & rendering mode'
+      }
+    ];
+
+    const chosenMode = await selectFromMenu('RECON PROFILE', modes, { allowBack: true });
+    if (!chosenMode) return;
+
+    let cfg = chosenMode.opts ? { ...chosenMode.opts } : null;
+    if (chosenMode.id === 'custom') {
+      const maxPages = parseInt(await askInput('MAX PAGES', '300'), 10) || 300;
+      const maxDepth = parseInt(await askInput('MAX DEPTH', '6'), 10) || 6;
+      const subAns = (await askInput('ENUMERATE & CRAWL SUBDOMAINS (y/n)', 'y')).toLowerCase();
+      const modeAns = (await askInput('RENDER MODE (http / browser)', 'http')).toLowerCase();
+      cfg = {
+        discoverSubs: subAns.startsWith('y'),
+        includeSubdomains: subAns.startsWith('y'),
+        maxPages,
+        maxDepth,
+        concurrency: modeAns === 'browser' ? 4 : 10,
+        renderMode: modeAns === 'browser' ? 'browser' : 'http',
+        scanJs: true
+      };
+    }
 
     const baseOutDir = getDefaultOutputDir(process.cwd(), targetUrl);
     const reconDir = path.join(baseOutDir, 'recon');
     await fs.mkdir(reconDir, { recursive: true });
 
     console.log('');
-    const spinner = createCloneXSpinner('ENGAGING SITE RECON').start();
+    const token = beginAbortable();
+    const spinner = createCloneXSpinner('ENGAGING ECOSYSTEM RECON').start();
 
-    let intel;
+    let subdomainData = null;
+    let crawlResult = null;
+
     try {
-      intel = await analyzeWebsiteIntel(targetUrl, (msg) => spinner.update(msg));
+      const targetHost = new URL(targetUrl).hostname;
+      let extraHosts = [];
+      let seedUrls = [];
+
+      if (cfg.discoverSubs) {
+        subdomainData = await discoverSubdomains(targetHost, {
+          useCertificates: true,
+          usePassiveApis: true,
+          useBruteforce: true,
+          useArchive: true,
+          probe: true,
+          onProgress: (msg) => spinner.update(msg),
+          shouldStop: () => token.aborted
+        });
+
+        extraHosts = subdomainData.subdomains
+          .filter((s) => s.alive)
+          .map((s) => s.host);
+
+        for (const sub of subdomainData.subdomains) {
+          if (sub.alive && sub.url) seedUrls.push(sub.url);
+        }
+
+        for (const arch of (subdomainData.archivedUrls || []).slice(0, 150)) {
+          if (arch.mime && arch.mime.includes('html')) {
+            seedUrls.push(arch.url);
+          }
+        }
+      }
+
+      crawlResult = await crawlSite(targetUrl, {
+        maxPages: cfg.maxPages,
+        maxDepth: cfg.maxDepth,
+        concurrency: cfg.concurrency,
+        delayMs: 40,
+        includeSubdomains: cfg.includeSubdomains,
+        extraHosts,
+        respectRobots: false,
+        renderMode: cfg.renderMode,
+        useSitemaps: true,
+        seedUrls,
+        scanJs: cfg.scanJs,
+        token,
+        onProgress: (msg) => spinner.update(msg)
+      });
+
+      spinner.update('COMPILING INTELLIGENCE DOSSIER & EXPORTS...');
+      await writeCrawlReport(crawlResult, reconDir, {
+        subdomains: subdomainData?.subdomains || null,
+        archivedUrls: subdomainData?.archivedUrls || null
+      });
+
+      const dur = (crawlResult.meta.durationMs / 1000).toFixed(1);
+      spinner.succeed(
+        `RECON COMPLETE: ${crawlResult.pages.length} PAGES // ${Object.keys(crawlResult.aggregate.hosts).length} HOSTS [${dur}s]`
+      );
     } catch (err) {
       spinner.fail(`RECON ABORTED: ${err.message}`);
+      endAbortable();
       await pauseForEnter();
       return;
+    } finally {
+      endAbortable();
     }
 
-    const saveReports = async (data) => {
-      const jsonPath = path.join(reconDir, 'site-intel.json');
-      const mdPath = path.join(reconDir, 'site-intel.md');
-      const linksTxtPath = path.join(reconDir, 'all-links.txt');
+    const a = crawlResult.aggregate;
+    const totalWords = crawlResult.pages.reduce((s, p) => s + (p.wordCount || 0), 0);
+    const aliveSubs = subdomainData
+      ? subdomainData.subdomains.filter((s) => s.alive).length
+      : 0;
 
-      const allLinksText = [
-        `[INTERNAL ROUTES: ${data.internalPages.length}]`,
-        ...data.internalPages.map((p) => p.url),
-        ``,
-        `[EXTERNAL LINKS: ${data.externalLinks.length}]`,
-        ...data.externalLinks,
-        ``,
-        `[API ENDPOINTS: ${data.apiEndpoints.length}]`,
-        ...data.apiEndpoints
-      ].join('\n');
-
-      await fs.writeFile(jsonPath, JSON.stringify(data, null, 2), 'utf-8');
-      await fs.writeFile(mdPath, formatMarkdownReport(data), 'utf-8');
-      await fs.writeFile(linksTxtPath, allLinksText, 'utf-8');
-      return { jsonPath, mdPath, linksTxtPath };
-    };
-
-    const reportPaths = await saveReports(intel);
-    spinner.succeed(`RECON COMPLETE: "${intel.meta.title || intel.url}"`);
-
-    console.log(`\n  ${RED.bold('▸ TELEMETRY')}`);
-    console.log(`   ${ARC('◈')} ${GOLD('TITLE          ')} ${chalk.white(intel.meta.title || 'N/A')}`);
-    console.log(
-      `   ${ARC('◈')} ${GOLD('STACK          ')} ${ARC(intel.techStack.join(' // ') || 'Static HTML/CSS')}`
-    );
-    console.log(
-      `   ${ARC('◈')} ${GOLD('SITEMAP        ')} ${chalk.white(`${intel.sitemap.totalSitemapUrls} URLs`)} ${DIM(intel.sitemap.hasRobotsTxt ? '[robots.txt active]' : '[no robots.txt]')}`
-    );
-    console.log(
-      `   ${ARC('◈')} ${GOLD('INTERNAL PAGES ')} ${ARC.bold(intel.internalPages.length)}`
-    );
-    console.log(
-      `   ${ARC('◈')} ${GOLD('EXTERNAL LINKS ')} ${chalk.white(intel.externalLinks.length)}`
-    );
-    console.log(
-      `   ${ARC('◈')} ${GOLD('API ENDPOINTS  ')} ${chalk.white(intel.apiEndpoints.length)}`
-    );
-    console.log(
-      `   ${ARC('◈')} ${GOLD('CONTACTS       ')} ${chalk.white(
-        [...intel.contacts.emails, ...intel.contacts.phones].join(', ') || 'None'
-      )}`
-    );
-    if (intel.contacts.socials.length > 0) {
+    console.log(`\n  ${RED.bold('▸ ECOSYSTEM TELEMETRY')}`);
+    if (subdomainData) {
       console.log(
-        `   ${ARC('◈')} ${GOLD('SOCIALS        ')} ${chalk.white(
-          intel.contacts.socials.map((s) => `${s.platform}: ${s.url}`).join(' | ')
-        )}`
+        `   ${ARC('◈')} ${GOLD('SUBDOMAINS     ')} ${ARC.bold(subdomainData.subdomains.length)} discovered (${aliveSubs} live HTTP/HTTPS)`
+      );
+      console.log(
+        `   ${ARC('◈')} ${GOLD('WAYBACK URLS   ')} ${chalk.white(subdomainData.archivedUrls.length)} historical endpoints`
       );
     }
+    console.log(
+      `   ${ARC('◈')} ${GOLD('PAGES CRAWLED  ')} ${ARC.bold(crawlResult.pages.length)} pages (${totalWords.toLocaleString()} words extracted to Markdown)`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('HOSTS MAPPED   ')} ${chalk.white(Object.keys(a.hosts).join(', '))}`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('TECH STACK     ')} ${ARC(a.tech.slice(0, 10).map((t) => t.name).join(' // ') || 'Static HTML/CSS')}`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('API ENDPOINTS  ')} ${ARC.bold(a.endpoints.length)} endpoints extracted from HTML & JS bundles`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('DOCUMENTS      ')} ${chalk.white(a.documents.length)} files (PDF/DOCX/XLSX/ZIP/CSV)`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('MEDIA ASSETS   ')} ${chalk.white(a.media.length)} images/videos/vectors`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('EXTERNAL LINKS ')} ${chalk.white(`${a.externalLinks.length} links across ${a.externalDomains.length} domains`)}`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('CONTACTS       ')} ${chalk.white(`${a.emails.length} emails | ${a.phones.length} phones | ${a.socials.length} social profiles`)}`
+    );
+    console.log(
+      `   ${ARC('◈')} ${GOLD('FORMS & TABLES ')} ${chalk.white(`${a.forms.length} forms | ${a.tables.length} HTML tables exported to CSV`)}`
+    );
 
-    console.log(`\n  ${RED.bold('▸ LOGS')}`);
-    console.log(`   ${DIM('JSON  //')} ${chalk.white(reportPaths.jsonPath)}`);
-    console.log(`   ${DIM('MD    //')} ${chalk.white(reportPaths.mdPath)}`);
-    console.log(`   ${DIM('LINKS //')} ${chalk.white(reportPaths.linksTxtPath)}\n`);
+    console.log(`\n  ${RED.bold('▸ DOSSIER ARTIFACTS')}`);
+    console.log(`   ${DIM('REPORT   //')} ${chalk.white(path.join(reconDir, 'REPORT.md'))}`);
+    console.log(`   ${DIM('PAGES    //')} ${chalk.white(path.join(reconDir, 'pages.csv'))}`);
+    console.log(`   ${DIM('CONTENT  //')} ${chalk.white(path.join(reconDir, 'content'))} ${DIM('(Markdown per page)')}`);
+    console.log(`   ${DIM('CONTACTS //')} ${chalk.white(path.join(reconDir, 'contacts.csv'))}`);
+    console.log(`   ${DIM('LINKS    //')} ${chalk.white(path.join(reconDir, 'links'))}`);
+    if (subdomainData) {
+      console.log(`   ${DIM('SUBS     //')} ${chalk.white(path.join(reconDir, 'subdomains.csv'))}`);
+    }
+    console.log('');
 
     while (true) {
       const subOptions = [
         {
-          id: 'list-pages',
-          title: `Internal Routes [${intel.internalPages.length}]`,
-          description: 'List discovered site routes'
+          id: 'subs',
+          title: `Subdomains & Live Hosts [${subdomainData ? subdomainData.subdomains.length : Object.keys(a.hosts).length}]`,
+          description: 'View all discovered subdomains, IPs, status codes & server headers'
         },
         {
-          id: 'list-external',
-          title: `External Links & APIs [${intel.externalLinks.length + intel.apiEndpoints.length}]`,
-          description: 'Outbound URLs & XHR endpoints'
+          id: 'pages',
+          title: `Crawled Pages & Routes [${crawlResult.pages.length}]`,
+          description: 'Browse all scraped URLs, titles, word counts & status codes'
         },
         {
-          id: 'spider',
-          title: 'Deep Spider Crawl',
-          description: 'Recursively crawl internal links'
+          id: 'contacts',
+          title: `Contacts, Socials & Forms [${a.emails.length + a.phones.length + a.socials.length + a.forms.length}]`,
+          description: 'View extracted emails, phone numbers, social accounts & forms'
         },
         {
-          id: 'clone-page',
-          title: 'Clone Discovered Route',
-          description: '1:1 clone a single route or batch top 5'
+          id: 'apis',
+          title: `API Endpoints & Documents [${a.endpoints.length + a.documents.length}]`,
+          description: 'View JS-extracted API routes, GraphQL/REST endpoints & document URLs'
+        },
+        {
+          id: 'download-all',
+          title: `Bulk Download Discovered Documents & Media [${a.documents.length + a.media.length}]`,
+          description: 'Download all PDFs, Office docs, archives & media files to disk'
+        },
+        {
+          id: 'mirror-site',
+          title: '1:1 Clone All Discovered Pages / Subdomains',
+          description: 'Mirror the crawled pages into offline 1:1 HTML/CSS + React'
         },
         {
           id: 'open-folder',
-          title: 'Open Recon Directory',
+          title: 'Open Intelligence Dossier in Explorer',
           description: reconDir
         }
       ];
@@ -562,93 +317,122 @@ export const siteReconModule = {
       const action = await selectFromMenu('RECON OPERATIONS', subOptions, {
         allowBack: true
       });
-
       if (!action) break;
 
-      if (action.id === 'list-pages') {
-        console.log(`\n  ${RED.bold(`▸ INTERNAL ROUTES [${intel.internalPages.length}]`)}`);
-        intel.internalPages.slice(0, 80).forEach((p, idx) => {
-          console.log(
-            `   ${GOLD(`[${idx + 1}]`)} ${ARC(p.path.padEnd(32, ' '))} ${DIM(p.url)}`
-          );
-        });
-        await pauseForEnter();
-      } else if (action.id === 'list-external') {
-        console.log(`\n  ${RED.bold(`▸ EXTERNAL LINKS [${intel.externalLinks.length}]`)}`);
-        intel.externalLinks.slice(0, 50).forEach((u, idx) => {
-          console.log(`   ${GOLD(`[${idx + 1}]`)} ${chalk.white(u)}`);
-        });
-        if (intel.apiEndpoints.length > 0) {
-          console.log(`\n  ${RED.bold(`▸ API / XHR ENDPOINTS [${intel.apiEndpoints.length}]`)}`);
-          intel.apiEndpoints.slice(0, 30).forEach((u) => {
-            console.log(`   ${ARC('◈')} ${chalk.white(u)}`);
+      if (action.id === 'subs') {
+        if (subdomainData && subdomainData.subdomains.length > 0) {
+          console.log(`\n  ${RED.bold(`▸ SUBDOMAINS [${subdomainData.subdomains.length}]`)}`);
+          subdomainData.subdomains.slice(0, 100).forEach((s, i) => {
+            const badge = s.alive ? ARC(`[${s.status}]`) : DIM('[DEAD]');
+            const ips = (s.ips || []).slice(0, 2).join(', ');
+            console.log(
+              `   ${GOLD(`[${i + 1}]`)} ${badge} ${chalk.white.bold(s.host.padEnd(32, ' '))} ${DIM(ips.padEnd(16, ' '))} ${GOLD(s.title || '')}`
+            );
+          });
+        } else {
+          console.log(`\n  ${RED.bold('▸ HOSTS')}`);
+          Object.entries(a.hosts).forEach(([h, count]) => {
+            console.log(`   ${ARC('◈')} ${chalk.white.bold(h.padEnd(32, ' '))} ${GOLD(`${count} pages`)}`);
           });
         }
         await pauseForEnter();
-      } else if (action.id === 'spider') {
-        const limitStr = await askInput('MAX PAGES', '15');
-        const maxPages = Math.min(100, Math.max(1, parseInt(limitStr, 10) || 15));
-        console.log('');
-        const crawlSpinner = createCloneXSpinner('ENGAGING SPIDER').start();
-        const expandedPages = await deepCrawlInternalLinks(
-          intel.origin,
-          intel.internalPages,
-          maxPages,
-          (msg) => crawlSpinner.update(msg)
-        );
-        intel.internalPages = expandedPages;
-        await saveReports(intel);
-        crawlSpinner.succeed(`SPIDER COMPLETE: ${intel.internalPages.length} ROUTES INDEXED`);
-        console.log('');
-      } else if (action.id === 'clone-page') {
-        const pageChoices = [
-          {
-            id: '__batch_top_5__',
-            title: 'Batch Clone Top 5 Routes',
-            description: 'Sequential 1:1 capture'
-          },
-          ...intel.internalPages.slice(0, 30).map((p) => ({
-            id: p.url,
-            title: p.path || '/',
-            description: p.url
-          }))
-        ];
-
-        const chosenPage = await selectFromMenu('SELECT TARGET ROUTE', pageChoices, {
-          allowBack: true
+      } else if (action.id === 'pages') {
+        console.log(`\n  ${RED.bold(`▸ CRAWLED PAGES [${crawlResult.pages.length}]`)}`);
+        crawlResult.pages.slice(0, 100).forEach((p, idx) => {
+          console.log(
+            `   ${GOLD(`[${idx + 1}]`)} ${ARC(`[${p.status}]`)} ${chalk.white(p.url.slice(0, 68).padEnd(70, ' '))} ${DIM(`${p.wordCount || 0}w`)}`
+          );
         });
-
-        if (chosenPage) {
-          if (chosenPage.id === '__batch_top_5__') {
-            const batchPages = intel.internalPages.slice(0, 5);
-            for (const p of batchPages) {
-              const out = getDefaultOutputDir(process.cwd(), p.url);
-              await executeCloneJob(p.url, {
-                outputDir: out,
-                viewportWidth: context.settings.viewportWidth,
-                viewportHeight: context.settings.viewportHeight,
-                waitExtraMs: context.settings.waitExtraMs,
-                fullScroll: context.settings.fullScroll,
-                downloadAssets: true,
-                generateReact: true,
-                verify: false
-              });
-            }
-          } else {
-            const out = getDefaultOutputDir(process.cwd(), chosenPage.id);
-            await executeCloneJob(chosenPage.id, {
-              outputDir: out,
-              viewportWidth: context.settings.viewportWidth,
-              viewportHeight: context.settings.viewportHeight,
-              waitExtraMs: context.settings.waitExtraMs,
-              fullScroll: context.settings.fullScroll,
-              downloadAssets: true,
-              generateReact: true,
-              verify: true
-            });
-          }
-          await pauseForEnter();
+        await pauseForEnter();
+      } else if (action.id === 'contacts') {
+        console.log(`\n  ${RED.bold(`▸ EMAILS [${a.emails.length}]`)}`);
+        a.emails.slice(0, 50).forEach((e) => {
+          console.log(`   ${ARC('◈')} ${GOLD(e.value.padEnd(36, ' '))} ${DIM(`(${e.count}x)`)}`);
+        });
+        console.log(`\n  ${RED.bold(`▸ PHONES [${a.phones.length}]`)}`);
+        a.phones.slice(0, 50).forEach((p) => {
+          console.log(`   ${ARC('◈')} ${GOLD(p.value.padEnd(24, ' '))} ${DIM(`(${p.count}x)`)}`);
+        });
+        console.log(`\n  ${RED.bold(`▸ SOCIAL PROFILES [${a.socials.length}]`)}`);
+        a.socials.forEach((s) => {
+          console.log(`   ${ARC('◈')} ${GOLD(s.platform.padEnd(14, ' '))} ${chalk.white(s.url)}`);
+        });
+        if (a.forms.length > 0) {
+          console.log(`\n  ${RED.bold(`▸ FORMS [${a.forms.length}]`)}`);
+          a.forms.slice(0, 25).forEach((f) => {
+            console.log(
+              `   ${ARC('◈')} ${GOLD(`${f.method} ${f.action}`)} ${DIM(`fields: ${f.fields.map((x) => x.name || x.type).join(', ')}`)}`
+            );
+          });
         }
+        await pauseForEnter();
+      } else if (action.id === 'apis') {
+        console.log(`\n  ${RED.bold(`▸ API / XHR / JS ENDPOINTS [${a.endpoints.length}]`)}`);
+        a.endpoints.slice(0, 80).forEach((ep) => {
+          console.log(`   ${ARC('◈')} ${chalk.white(ep)}`);
+        });
+        if (a.documents.length > 0) {
+          console.log(`\n  ${RED.bold(`▸ DOCUMENTS [${a.documents.length}]`)}`);
+          a.documents.slice(0, 50).forEach((d) => {
+            console.log(`   ${GOLD('◈')} ${chalk.white(d.url)}`);
+          });
+        }
+        await pauseForEnter();
+      } else if (action.id === 'download-all') {
+        const dumpDir = path.join(reconDir, 'downloaded-files');
+        await fs.mkdir(dumpDir, { recursive: true });
+        const targets = [
+          ...a.documents.map((d) => ({ url: d.url, folder: 'documents' })),
+          ...a.media.slice(0, 200).map((m) => ({ url: m.url, folder: 'media' }))
+        ];
+        if (targets.length === 0) {
+          console.log(GOLD('\n  No downloadable document/media URLs in this scan.'));
+          await pauseForEnter();
+          continue;
+        }
+        const dlSpinner = createCloneXSpinner(`DOWNLOADING ${targets.length} FILES`).start();
+        let saved = 0;
+        await runPool(targets, 10, async (item, idx) => {
+          const sub = path.join(dumpDir, item.folder);
+          await fs.mkdir(sub, { recursive: true });
+          const res = await httpGet(item.url, { asBuffer: true, timeoutMs: 20000 });
+          if (res.ok && res.body) {
+            const name =
+              path.basename(new URL(item.url).pathname).replace(/[^a-zA-Z0-9._-]/g, '_') ||
+              `file_${idx + 1}.bin`;
+            await fs.writeFile(path.join(sub, `${idx + 1}_${name}`), res.body);
+            saved++;
+            dlSpinner.update(`DOWNLOADED [${saved}/${targets.length}] ${name}`);
+          }
+        });
+        dlSpinner.succeed(`DOWNLOADED ${saved} FILES -> ${dumpDir}`);
+        await pauseForEnter();
+      } else if (action.id === 'mirror-site') {
+        const limitStr = await askInput('MAX PAGES TO 1:1 CLONE', String(Math.min(25, crawlResult.pages.length)));
+        const limit = Math.max(1, parseInt(limitStr, 10) || 15);
+        const mirrorDir = path.join(baseOutDir, 'mirror');
+        const mToken = beginAbortable();
+        const mSpinner = createCloneXSpinner('MIRRORING DISCOVERED PAGES').start();
+        try {
+          const res = await mirrorFullWebsite(targetUrl, {
+            outputDir: mirrorDir,
+            maxPages: limit,
+            maxDepth: 4,
+            includeSubdomains: cfg.includeSubdomains,
+            viewportWidth: context.settings.viewportWidth,
+            viewportHeight: context.settings.viewportHeight,
+            waitExtraMs: context.settings.waitExtraMs,
+            fullScroll: context.settings.fullScroll,
+            token: mToken,
+            onProgress: (msg) => mSpinner.update(msg)
+          });
+          mSpinner.succeed(`MIRRORED ${res.clonedPages.filter((p) => !p.error).length} PAGES -> ${mirrorDir}`);
+        } catch (err) {
+          mSpinner.fail(`MIRROR ERROR: ${err.message}`);
+        } finally {
+          endAbortable();
+        }
+        await pauseForEnter();
       } else if (action.id === 'open-folder') {
         if (process.platform === 'win32') {
           spawn('explorer.exe', [reconDir], { detached: true, stdio: 'ignore' }).unref();

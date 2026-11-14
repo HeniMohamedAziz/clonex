@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { printSectionHeader } from '../ui/banner.js';
 import { selectFromMenu, askInput } from '../ui/prompt.js';
+import { saveSettings } from '../core/config.js';
 
 const RED = chalk.hex('#EF4444');
 const GOLD = chalk.hex('#FBBF24');
@@ -10,7 +11,7 @@ export const settingsModule = {
   id: 'settings',
   category: 'System',
   title: 'Core Configuration',
-  description: 'Viewport + Scroll + Wait + Port',
+  description: 'Viewport + Spider Limits + Concurrency + Port',
 
   async run(context) {
     while (true) {
@@ -22,6 +23,11 @@ export const settingsModule = {
           id: 'viewport',
           title: 'Viewport Dimensions',
           description: ARC(`${s.viewportWidth}x${s.viewportHeight}`)
+        },
+        {
+          id: 'crawl',
+          title: 'Default Spider Limits',
+          description: ARC(`Max ${s.crawlMaxPages || 300} pages | Depth ${s.crawlMaxDepth || 6} | Concurrency ${s.crawlConcurrency || 8}`)
         },
         {
           id: 'wait',
@@ -44,13 +50,23 @@ export const settingsModule = {
         allowBack: true
       });
 
-      if (!choice) break;
+      if (!choice) {
+        saveSettings(s);
+        break;
+      }
 
       if (choice.id === 'viewport') {
         const w = await askInput('WIDTH (px)', String(s.viewportWidth));
         const h = await askInput('HEIGHT (px)', String(s.viewportHeight));
         s.viewportWidth = parseInt(w, 10) || 1440;
         s.viewportHeight = parseInt(h, 10) || 900;
+      } else if (choice.id === 'crawl') {
+        const mp = await askInput('MAX PAGES', String(s.crawlMaxPages || 300));
+        const md = await askInput('MAX DEPTH', String(s.crawlMaxDepth || 6));
+        const cc = await askInput('CONCURRENCY', String(s.crawlConcurrency || 8));
+        s.crawlMaxPages = parseInt(mp, 10) || 300;
+        s.crawlMaxDepth = parseInt(md, 10) || 6;
+        s.crawlConcurrency = parseInt(cc, 10) || 8;
       } else if (choice.id === 'wait') {
         const waitVal = await askInput('DWELL (ms)', String(s.waitExtraMs));
         s.waitExtraMs = parseInt(waitVal, 10) || 1500;
@@ -60,6 +76,7 @@ export const settingsModule = {
         const portVal = await askInput('PORT', String(s.previewPort));
         s.previewPort = parseInt(portVal, 10) || 4000;
       }
+      saveSettings(s);
     }
   }
 };

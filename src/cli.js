@@ -5,25 +5,28 @@ import { createStaticServer } from './verifier.js';
 import {
   clearScreen,
   renderBanner,
-  playBootAnimation
+  playBootAnimation,
+  createCloneXSpinner
 } from './ui/banner.js';
 import { selectFromMenu, closePrompt } from './ui/prompt.js';
 import { CLONEX_MODULES } from './modules/index.js';
 import { executeCloneJob, getDefaultOutputDir } from './modules/full-clone.js';
+import { loadSettings } from './core/config.js';
+import { installSigintHandler, beginAbortable, endAbortable } from './core/abort.js';
+import { discoverSubdomains } from './core/subdomains.js';
+import { crawlSite } from './core/crawler.js';
+import { writeCrawlReport } from './core/report.js';
+import { mirrorFullWebsite } from './core/mirror.js';
 
 const RED = chalk.hex('#EF4444');
 const GOLD = chalk.hex('#FBBF24');
 const ARC = chalk.hex('#00E5FF');
 
 const runtimeContext = {
-  settings: {
-    viewportWidth: 1440,
-    viewportHeight: 900,
-    waitExtraMs: 1500,
-    fullScroll: true,
-    previewPort: 4000
-  }
+  settings: loadSettings()
 };
+
+installSigintHandler(() => closePrompt());
 
 async function startInteractiveMenu(depSummary) {
   await playBootAnimation(depSummary);
@@ -49,7 +52,7 @@ async function startInteractiveMenu(depSummary) {
   }
 }
 
-function normalizeUrl(rawUrl) {
+function normalizeInputUrl(rawUrl) {
   let trimmed = rawUrl.trim();
   if (!/^https?:\/\//i.test(trimmed)) {
     trimmed = `https://${trimmed}`;
@@ -62,8 +65,8 @@ export async function runCli(depSummary = null) {
 
   program
     .name('clonex')
-    .description('CloneX — Web Capture & Recon Suite')
-    .version('1.1.0');
+    .description('CloneX — Full-Site 1:1 Cloner, Subdomain Hunter & Deep Intelligence Suite')
+    .version('2.0.0');
 
   program
     .argument('[url]', 'Target URL')
@@ -87,7 +90,7 @@ export async function runCli(depSummary = null) {
 
       let targetUrl;
       try {
-        targetUrl = normalizeUrl(rawUrl);
+        targetUrl = normalizeInputUrl(rawUrl);
       } catch {
         console.error(RED(`  ✖ Invalid URL: ${rawUrl}`));
         process.exit(1);
@@ -126,6 +129,93 @@ export async function runCli(depSummary = null) {
       } catch {
         closePrompt();
         process.exit(1);
+      }
+    });
+
+  program
+    .command('recon <url>')
+    .description('Deep spider all pages, subdomains, sitemaps, JS endpoints, contacts & content')
+    .option('-m, --max-pages <number>', 'Maximum pages to crawl', '250')
+    .option('-d, --depth <number>', 'Maximum crawl depth', '6')
+    .option('--no-subdomains', 'Disable subdomain enumeration & crawling')
+    .option('--browser', 'Use headless Chromium for every page')
+    .action(async (rawUrl, opts) => {
+      renderBanner('TOTAL SITE RECON');
+      const targetUrl = normalizeInputUrl(rawUrl);
+      const host = new URL(targetUrl).hostname;
+      const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
+      const reconDir = path.join(baseOut, 'recon');
+      const token = beginAbortable();
+      const spinner = createCloneXSpinner('ENGAGING ECOSYSTEM RECON').start();
+
+      try {
+        let subRes = null;
+        let extraHosts = [];
+        let seedUrls = [];
+        if (opts.subdomains) {
+          subRes = await discoverSubdomains(host, {
+            onProgress: (m) => spinner.update(m),
+            shouldStop: () => token.aborted
+          });
+          extraHosts = subRes.subdomains.filter((s) => s.alive).map((s) => s.host);
+          seedUrls = subRes.subdomains.filter((s) => s.alive && s.url).map((s) => s.url);
+        }
+
+        const crawlRes = await crawlSite(targetUrl, {
+          maxPages: parseInt(opts.maxPages, 10) || 250,
+          maxDepth: parseInt(opts.depth, 10) || 6,
+          includeSubdomains: Boolean(opts.subdomains),
+          extraHosts,
+          seedUrls,
+          respectRobots: false,
+          renderMode: opts.browser ? 'browser' : 'http',
+          token,
+          onProgress: (m) => spinner.update(m)
+        });
+
+        await writeCrawlReport(crawlRes, reconDir, {
+          subdomains: subRes?.subdomains,
+          archivedUrls: subRes?.archivedUrls
+        });
+
+        spinner.succeed(
+          `RECON COMPLETE: ${crawlRes.pages.length} PAGES // ${subRes ? subRes.subdomains.length : 1} HOSTS -> ${reconDir}`
+        );
+      } finally {
+        endAbortable();
+        closePrompt();
+      }
+    });
+
+  program
+    .command('mirror <url>')
+    .description('Clone an entire multi-page website & subdomains 1:1 with offline link rewriting')
+    .option('-m, --max-pages <number>', 'Maximum pages to clone', '25')
+    .option('-d, --depth <number>', 'Maximum crawl depth', '4')
+    .option('-s, --subdomains', 'Include discovered live subdomains')
+    .action(async (rawUrl, opts) => {
+      renderBanner('FULL SITE MIRROR');
+      const targetUrl = normalizeInputUrl(rawUrl);
+      const baseOut = getDefaultOutputDir(process.cwd(), targetUrl);
+      const mirrorDir = path.join(baseOut, 'mirror');
+      const token = beginAbortable();
+      const spinner = createCloneXSpinner('ENGAGING MULTI-PAGE MIRROR').start();
+
+      try {
+        const res = await mirrorFullWebsite(targetUrl, {
+          outputDir: mirrorDir,
+          maxPages: parseInt(opts.maxPages, 10) || 25,
+          maxDepth: parseInt(opts.depth, 10) || 4,
+          includeSubdomains: Boolean(opts.subdomains),
+          token,
+          onProgress: (m) => spinner.update(m)
+        });
+        spinner.succeed(
+          `MIRROR COMPLETE: ${res.clonedPages.filter((p) => !p.error).length} PAGES -> ${res.dashboardPath}`
+        );
+      } finally {
+        endAbortable();
+        closePrompt();
       }
     });
 

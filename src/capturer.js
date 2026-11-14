@@ -31,21 +31,26 @@ export async function captureWebpage(targetUrl, options = {}) {
     waitExtraMs = 1500,
     fullScroll = true,
     screenshotPath = null,
+    browser: sharedBrowser = null,
     onProgress = () => {}
   } = options;
 
-  onProgress('Launching browser...');
-  const browser = await launchBrowser(
-    [
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--font-render-hinting=none'
-    ],
-    targetUrl
-  );
+  const ownsBrowser = !sharedBrowser;
+  if (ownsBrowser) onProgress('Launching browser...');
+  const browser =
+    sharedBrowser ||
+    (await launchBrowser(
+      [
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--font-render-hinting=none'
+      ],
+      targetUrl
+    ));
 
+  let context = null;
   try {
-    const context = await browser.newContext({
+    context = await browser.newContext({
       viewport: { width: viewportWidth, height: viewportHeight },
       deviceScaleFactor: 2,
       userAgent: USER_AGENT,
@@ -341,6 +346,7 @@ export async function captureWebpage(targetUrl, options = {}) {
       networkCache
     };
   } finally {
-    await browser.close();
+    if (context) await context.close().catch(() => {});
+    if (ownsBrowser) await browser.close().catch(() => {});
   }
 }
