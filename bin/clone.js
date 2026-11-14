@@ -2,15 +2,50 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
 import path from 'path';
-import fs from 'fs/promises';
-import { captureWebpage } from '../src/capturer.js';
-import { generateHtmlOutput } from '../src/generators/html-generator.js';
-import { generateReactProject } from '../src/generators/react-generator.js';
-import { verifyCloneFidelity, createStaticServer } from '../src/verifier.js';
+import { createStaticServer } from '../src/verifier.js';
+import {
+  clearScreen,
+  renderBanner,
+  playBootAnimation
+} from '../src/ui/banner.js';
+import { selectFromMenu, closePrompt } from '../src/ui/prompt.js';
+import { CLONEX_MODULES } from '../src/modules/index.js';
+import { executeCloneJob, getDefaultOutputDir } from '../src/modules/full-clone.js';
 
-const program = new Command();
+const runtimeContext = {
+  settings: {
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    waitExtraMs: 1500,
+    fullScroll: true,
+    previewPort: 4000
+  }
+};
+
+async function startInteractiveMenu() {
+  await playBootAnimation();
+
+  while (true) {
+    clearScreen();
+    renderBanner();
+
+    const selectedModule = await selectFromMenu(
+      'MAIN MENU — Choose a tool by number:',
+      CLONEX_MODULES
+    );
+
+    if (!selectedModule) {
+      console.log(`\n  ${chalk.hex('#00F5D4')('Shutting down CloneX. Goodbye!')}\n`);
+      closePrompt();
+      process.exit(0);
+    }
+
+    clearScreen();
+    renderBanner(`${selectedModule.title}`);
+    await selectedModule.run(runtimeContext);
+  }
+}
 
 function normalizeUrl(rawUrl) {
   let trimmed = rawUrl.trim();
@@ -20,23 +55,15 @@ function normalizeUrl(rawUrl) {
   return new URL(trimmed).href;
 }
 
-function getDefaultOutputDir(targetUrl) {
-  const parsed = new URL(targetUrl);
-  const cleanHost = parsed.hostname.replace(/^www\./, '').replace(/[^a-zA-Z0-9.-]/g, '_');
-  const cleanPath = parsed.pathname
-    .replace(/^\/+|\/+$/g, '')
-    .replace(/[^a-zA-Z0-9_-]/g, '_');
-  const folderName = cleanPath ? `${cleanHost}_${cleanPath}` : cleanHost;
-  return path.resolve(process.cwd(), 'cloned-sites', folderName);
-}
+const program = new Command();
 
 program
   .name('clonex')
-  .description('Capture live webpages and export clean HTML/CSS and React/Tailwind code.')
-  .version('1.0.0');
+  .description('CloneX — Interactive Web Design Capture & Reverse-Engineering Suite')
+  .version('1.1.0');
 
 program
-  .argument('[url]', 'Target webpage URL to clone')
+  .argument('[url]', 'Optional URL to clone directly (omit to launch interactive menu)')
   .option('-o, --output <dir>', 'Custom output directory path')
   .option('-W, --width <number>', 'Viewport width in pixels', '1440')
   .option('-H, --height <number>', 'Viewport height in pixels', '900')
@@ -49,15 +76,17 @@ program
   .option('-p, --port <number>', 'Port for preview server', '4000')
   .action(async (rawUrl, options) => {
     if (!rawUrl) {
-      program.help();
+      await startInteractiveMenu();
       return;
     }
+
+    renderBanner();
 
     let targetUrl;
     try {
       targetUrl = normalizeUrl(rawUrl);
     } catch {
-      console.error(chalk.red(`Invalid URL: "${rawUrl}"`));
+      console.error(chalk.red(`  ✖ Invalid URL: "${rawUrl}"`));
       process.exit(1);
     }
 
@@ -66,100 +95,33 @@ program
     const waitExtraMs = parseInt(options.wait, 10) || 1500;
     const outputDir = options.output
       ? path.resolve(process.cwd(), options.output)
-      : getDefaultOutputDir(targetUrl);
-
-    await fs.mkdir(outputDir, { recursive: true });
-    const originalScreenshotPath = path.join(outputDir, 'screenshot-original.png');
-
-    console.log(chalk.gray('\nTarget   : ') + chalk.cyan(targetUrl));
-    console.log(chalk.gray('Viewport : ') + chalk.white(`${viewportWidth}x${viewportHeight}`));
-    console.log(chalk.gray('Output   : ') + chalk.white(outputDir) + '\n');
-
-    const spinner = ora({ text: 'Starting capture...', color: 'cyan' }).start();
-    const startTime = Date.now();
+      : getDefaultOutputDir(process.cwd(), targetUrl);
 
     try {
-      const captureData = await captureWebpage(targetUrl, {
+      await executeCloneJob(targetUrl, {
+        outputDir,
         viewportWidth,
         viewportHeight,
         waitExtraMs,
         fullScroll: options.scroll,
-        screenshotPath: originalScreenshotPath,
-        onProgress: (msg) => {
-          spinner.text = msg;
-        }
-      });
-
-      const htmlResult = await generateHtmlOutput(captureData, outputDir, {
         downloadAssets: options.assets,
-        onProgress: (msg) => {
-          spinner.text = msg;
-        }
+        generateReact: options.react,
+        verify: options.verify
       });
-
-      let reactResult = null;
-      if (options.react) {
-        reactResult = await generateReactProject(
-          htmlResult,
-          captureData.designTokens,
-          outputDir,
-          {
-            onProgress: (msg) => {
-              spinner.text = msg;
-            }
-          }
-        );
-      }
-
-      let verifyResult = null;
-      if (options.verify) {
-        verifyResult = await verifyCloneFidelity({
-          outputDir,
-          originalScreenshotPath,
-          viewportWidth,
-          viewportHeight,
-          onProgress: (msg) => {
-            spinner.text = msg;
-          }
-        });
-      }
-
-      const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-      spinner.succeed(chalk.green(`Cloned "${captureData.title}" in ${elapsedSec}s`));
-
-      console.log('\nOutput files:');
-      console.log(`  HTML/CSS      : ${chalk.cyan(path.join(outputDir, 'index.html'))}`);
-      console.log(`  Stylesheet    : ${chalk.cyan(path.join(outputDir, 'styles.css'))}`);
-      console.log(`  Single file   : ${chalk.cyan(path.join(outputDir, 'single-file.html'))}`);
-      console.log(`  Design tokens : ${chalk.cyan(path.join(outputDir, 'design-tokens.json'))}`);
-
-      if (options.assets) {
-        console.log(
-          `  Assets        : ${htmlResult.assetStats.downloadedCount} files in ${chalk.cyan(path.join(outputDir, 'assets'))}`
-        );
-      }
-
-      if (reactResult) {
-        console.log(
-          `  React project : ${chalk.cyan(reactResult.reactDir)} (${reactResult.components.length} components)`
-        );
-      }
-
-      if (verifyResult && verifyResult.similarityPercent !== null) {
-        console.log(`  Visual match  : ${chalk.magenta(`${verifyResult.similarityPercent}%`)}`);
-      }
-      console.log('');
 
       if (options.serve) {
         const port = parseInt(options.port, 10) || 4000;
         const server = createStaticServer(outputDir);
         server.listen(port, '127.0.0.1', () => {
-          console.log(`Preview server running at ${chalk.cyan(`http://localhost:${port}`)}`);
+          console.log(
+            `  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Preview server running at ${chalk.cyan(`http://localhost:${port}`)}`
+          );
         });
+      } else {
+        closePrompt();
       }
-    } catch (err) {
-      spinner.fail(chalk.red('Clone failed'));
-      console.error(chalk.red(err.stack || err.message));
+    } catch {
+      closePrompt();
       process.exit(1);
     }
   });
@@ -169,11 +131,14 @@ program
   .description('Start a local static server to preview a cloned folder')
   .option('-p, --port <number>', 'Port to listen on', '4000')
   .action((dir, opts) => {
+    renderBanner('Local Preview Server');
     const resolvedDir = path.resolve(process.cwd(), dir);
     const port = parseInt(opts.port, 10) || 4000;
     const server = createStaticServer(resolvedDir);
     server.listen(port, '127.0.0.1', () => {
-      console.log(`Serving ${resolvedDir} at ${chalk.cyan(`http://localhost:${port}`)}`);
+      console.log(
+        `  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Serving ${chalk.white(resolvedDir)} at ${chalk.cyan.underline(`http://localhost:${port}`)}\n`
+      );
     });
   });
 

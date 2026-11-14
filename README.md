@@ -1,53 +1,53 @@
 # clonex
 
-A CLI tool to capture live webpages and export clean HTML/CSS, local assets, design tokens, and editable React + Tailwind CSS components.
+Interactive CLI suite to capture live webpages, extract design tokens, harvest assets, and export 1:1 HTML/CSS and React/Tailwind components.
 
 ## Setup
 
 ```bash
 npm install
+npm link
 ```
 
-## Usage
+## Interactive Menu
 
-Clone a webpage by passing its URL:
+Run `clonex` (or `npm start` / `.\clonex.bat`) to launch the interactive menu:
 
 ```bash
-node bin/clone.js https://example.com
+clonex
 ```
 
-Clone and launch a local preview server immediately:
+### Built-in Modules
+
+- **[1] Clone Webpage (1:1 Design Capture)** — Full suite (HTML/CSS + React/Tailwind + local assets + visual fidelity verification), HTML-only, or mobile viewport presets
+- **[2] Multi-Viewport Responsive Snapshots** — Desktop (`1440x900`), Tablet (`768x1024`), and Mobile (`390x844`) retina screenshots
+- **[3] Design System & Tailwind Extractor** — Extract color palettes, typography, CSS custom properties, and `tailwind.config.js`
+- **[4] Asset Harvester (Images, SVGs & Fonts)** — Scrape and organize all images, inline SVGs, and `.woff2`/`.ttf` web fonts
+- **[5] Browse & Preview Cloned Sites** — Start a local preview server, open project folders in Explorer, or manage cloned sites
+- **[6] Engine Settings & Defaults** — Configure default viewport dimensions, wait time, scroll behavior, and preview server port
+
+## Direct CLI Usage
+
+You can also pass a URL directly from the terminal:
 
 ```bash
-node bin/clone.js https://example.com --serve
+clonex https://example.com
+clonex https://example.com --serve
+clonex preview ./cloned-sites/example.com --port 4000
 ```
 
-Preview an existing cloned directory:
+## Adding New Modules
 
-```bash
-node bin/clone.js preview ./cloned-sites/example.com --port 4000
+Each tool lives in `src/modules/` and is registered in `src/modules/index.js`:
+
+```js
+export const myNewModule = {
+  id: 'my-module',
+  category: 'Custom Tools',
+  title: 'My Custom Tool',
+  description: 'Short description shown in the menu',
+  async run(context) {
+    // Module logic here
+  }
+};
 ```
-
-## Options
-
-- `-o, --output <dir>` — Custom output directory (defaults to `./cloned-sites/<domain>`)
-- `-W, --width <number>` — Viewport width in pixels (default: `1440`)
-- `-H, --height <number>` — Viewport height in pixels (default: `900`)
-- `--wait <ms>` — Extra wait time in ms after scrolling (default: `1500`)
-- `--no-scroll` — Disable auto-scrolling before capture
-- `--no-assets` — Keep remote URLs instead of downloading assets locally
-- `--no-react` — Skip generating the React + Tailwind project
-- `--no-verify` — Skip visual screenshot diff verification
-- `-s, --serve` — Start a local preview server after cloning
-- `-p, --port <number>` — Port for the preview server (default: `4000`)
-
-## Output Structure
-
-For each cloned URL, `clonex` generates:
-
-- `index.html` & `styles.css` — Formatted HTML and unified stylesheet in cascade order
-- `single-file.html` — Standalone HTML file with styles inlined
-- `design-tokens.json` — Extracted colors, font families, font sizes, and CSS custom properties
-- `assets/` — Downloaded images, SVGs, and web fonts (`.woff2`, `.ttf`)
-- `react/` — Vite + React + Tailwind project with section components in `src/components/`
-- `screenshot-original.png` & `screenshot-clone.png` — Reference and verification screenshots
