@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import chalk from 'chalk';
-import { launchBrowser } from '../browser-finder.js';
+import { launchBrowser, navigateSafely } from '../browser-finder.js';
 import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
@@ -34,7 +34,7 @@ export const snapshotsModule = {
 
     console.log('');
     const spinner = createCloneXSpinner('INITIALIZING OPTICS').start();
-    const browser = await launchBrowser(['--font-render-hinting=none']);
+    const browser = await launchBrowser(['--font-render-hinting=none'], targetUrl);
 
     try {
       const savedFiles = [];
@@ -47,7 +47,7 @@ export const snapshotsModule = {
           ignoreHTTPSErrors: true
         });
         const page = await context.newPage();
-        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+        await navigateSafely(page, targetUrl, 30000);
         await page.evaluate(() => document.fonts?.ready).catch(() => {});
         await page.waitForTimeout(800);
 

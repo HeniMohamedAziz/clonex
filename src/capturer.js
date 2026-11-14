@@ -1,4 +1,4 @@
-import { launchBrowser } from './browser-finder.js';
+import { launchBrowser, navigateSafely } from './browser-finder.js';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -35,11 +35,14 @@ export async function captureWebpage(targetUrl, options = {}) {
   } = options;
 
   onProgress('Launching browser...');
-  const browser = await launchBrowser([
-    '--disable-web-security',
-    '--disable-features=IsolateOrigins,site-per-process',
-    '--font-render-hinting=none'
-  ]);
+  const browser = await launchBrowser(
+    [
+      '--disable-web-security',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--font-render-hinting=none'
+    ],
+    targetUrl
+  );
 
   try {
     const context = await browser.newContext({
@@ -80,16 +83,7 @@ export async function captureWebpage(targetUrl, options = {}) {
     });
 
     onProgress(`Loading ${targetUrl}...`);
-    try {
-      await page.goto(targetUrl, {
-        waitUntil: 'networkidle',
-        timeout: 35000
-      });
-    } catch {
-      onProgress('Waiting for DOM state...');
-      await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(3000);
-    }
+    await navigateSafely(page, targetUrl, 35000);
 
     const finalUrl = page.url();
 

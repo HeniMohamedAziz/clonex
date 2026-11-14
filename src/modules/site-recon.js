@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { spawn } from 'child_process';
 import * as cheerio from 'cheerio';
 import chalk from 'chalk';
-import { launchBrowser } from '../browser-finder.js';
+import { launchBrowser, navigateSafely } from '../browser-finder.js';
 import { getDefaultOutputDir, executeCloneJob } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, selectFromMenu, askInput, pauseForEnter } from '../ui/prompt.js';
@@ -98,7 +98,7 @@ export async function analyzeWebsiteIntel(targetUrl, onProgress = () => {}) {
   const origin = parsedTarget.origin;
 
   onProgress('ENGAGING BROWSER & NETWORK INTERCEPT');
-  const browser = await launchBrowser(['--disable-web-security']);
+  const browser = await launchBrowser(['--disable-web-security'], targetUrl);
 
   try {
     const context = await browser.newContext({
@@ -124,10 +124,7 @@ export async function analyzeWebsiteIntel(targetUrl, onProgress = () => {}) {
     });
 
     onProgress(`SCANNING ${targetUrl}`);
-    await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 }).catch(async () => {
-      await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-      await page.waitForTimeout(2000);
-    });
+    await navigateSafely(page, targetUrl, 30000);
 
     onProgress('EXTRACTING ROUTES, ENDPOINTS & FINGERPRINTS');
 
