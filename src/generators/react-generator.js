@@ -555,7 +555,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import App from './App.jsx';
 
-createRoot(document.getElementById('cloner-app-root')).render(
+createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
@@ -583,7 +583,7 @@ createRoot(document.getElementById('cloner-app-root')).render(
     <title>${htmlGenResult.title}</title>
   </head>
   <body${bodyClass}${bodyStyle}>
-    <div id="cloner-app-root" style="display: contents"></div>
+    <div id="root" style="display: contents"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
@@ -595,8 +595,7 @@ createRoot(document.getElementById('cloner-app-root')).render(
     extractedPalette[`brand-${idx + 1}`] = item.color;
   });
 
-  const tailwindConfig = `/** @type {import('tailwindcss').Config} */
-export default {
+  const tailwindConfig = `export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {

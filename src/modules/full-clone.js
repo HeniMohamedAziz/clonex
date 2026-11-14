@@ -9,6 +9,11 @@ import { verifyCloneFidelity, createStaticServer } from '../verifier.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, selectFromMenu, askInput } from '../ui/prompt.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+const DIM = chalk.hex('#52525B');
+
 export function getDefaultOutputDir(baseDir, targetUrl) {
   const parsed = new URL(targetUrl);
   const cleanHost = parsed.hostname.replace(/^www\./, '').replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -35,11 +40,11 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
   const originalScreenshotPath = path.join(outputDir, 'screenshot-original.png');
 
   console.log('');
-  console.log(`  ${chalk.gray('Target URL :')} ${chalk.cyan.underline(targetUrl)}`);
-  console.log(`  ${chalk.gray('Viewport   :')} ${chalk.white(`${viewportWidth}x${viewportHeight} (@2x Retina)`)}`);
-  console.log(`  ${chalk.gray('Output Dir :')} ${chalk.white(outputDir)}\n`);
+  console.log(`  ${DIM('TARGET   //')} ${ARC(targetUrl)}`);
+  console.log(`  ${DIM('VIEWPORT //')} ${chalk.white(`${viewportWidth}x${viewportHeight} @2x`)}`);
+  console.log(`  ${DIM('OUTPUT   //')} ${chalk.white(outputDir)}\n`);
 
-  const spinner = createCloneXSpinner('Initializing CloneX capture engine...').start();
+  const spinner = createCloneXSpinner('ENGAGING CHROMIUM CAPTURE').start();
   const startTime = Date.now();
 
   try {
@@ -49,12 +54,12 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
       waitExtraMs,
       fullScroll,
       screenshotPath: originalScreenshotPath,
-      onProgress: (msg) => spinner.update(msg)
+      onProgress: (msg) => spinner.update(msg.toUpperCase())
     });
 
     const htmlResult = await generateHtmlOutput(captureData, outputDir, {
       downloadAssets,
-      onProgress: (msg) => spinner.update(msg)
+      onProgress: (msg) => spinner.update(msg.toUpperCase())
     });
 
     let reactResult = null;
@@ -64,7 +69,7 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
         captureData.designTokens,
         outputDir,
         {
-          onProgress: (msg) => spinner.update(msg)
+          onProgress: (msg) => spinner.update(msg.toUpperCase())
         }
       );
     }
@@ -76,64 +81,64 @@ export async function executeCloneJob(targetUrl, jobOptions = {}) {
         originalScreenshotPath,
         viewportWidth,
         viewportHeight,
-        onProgress: (msg) => spinner.update(msg)
+        onProgress: (msg) => spinner.update(msg.toUpperCase())
       });
     }
 
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-    spinner.succeed(`Cloned "${captureData.title}" in ${elapsedSec}s`);
+    spinner.succeed(`TARGET ACQUIRED: "${captureData.title}" [${elapsedSec}s]`);
 
     console.log('');
-    console.log(`  ${chalk.hex('#00F5D4').bold('Generated Files:')}`);
-    console.log(`   ${chalk.green('•')} ${chalk.white.bold('HTML / CSS    :')} ${chalk.cyan(path.join(outputDir, 'index.html'))}`);
-    console.log(`   ${chalk.green('•')} ${chalk.white.bold('Stylesheet    :')} ${chalk.cyan(path.join(outputDir, 'styles.css'))}`);
-    console.log(`   ${chalk.green('•')} ${chalk.white.bold('Single File   :')} ${chalk.cyan(path.join(outputDir, 'single-file.html'))}`);
-    console.log(`   ${chalk.green('•')} ${chalk.white.bold('Design Tokens :')} ${chalk.cyan(path.join(outputDir, 'design-tokens.json'))}`);
+    console.log(`  ${RED.bold('▸ ARTIFACTS')}`);
+    console.log(`   ${ARC('◈')} ${GOLD('HTML / CSS    ')} ${chalk.white(path.join(outputDir, 'index.html'))}`);
+    console.log(`   ${ARC('◈')} ${GOLD('STYLESHEET    ')} ${chalk.white(path.join(outputDir, 'styles.css'))}`);
+    console.log(`   ${ARC('◈')} ${GOLD('SINGLE FILE   ')} ${chalk.white(path.join(outputDir, 'single-file.html'))}`);
+    console.log(`   ${ARC('◈')} ${GOLD('DESIGN TOKENS ')} ${chalk.white(path.join(outputDir, 'design-tokens.json'))}`);
 
     if (downloadAssets) {
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('Local Assets  :')} ${chalk.white(`${htmlResult.assetStats.downloadedCount} files in`)} ${chalk.cyan(path.join(outputDir, 'assets'))}`
+        `   ${ARC('◈')} ${GOLD('LOCAL ASSETS  ')} ${chalk.white(`${htmlResult.assetStats.downloadedCount} files`)} ${DIM('->')} ${chalk.white(path.join(outputDir, 'assets'))}`
       );
     }
 
     if (reactResult) {
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('React Project :')} ${chalk.cyan(reactResult.reactDir)} ${chalk.gray(`(${reactResult.components.length} components)`)}`
+        `   ${ARC('◈')} ${GOLD('REACT BUILD   ')} ${chalk.white(reactResult.reactDir)} ${DIM(`[${reactResult.components.length} modules]`)}`
       );
     }
 
     if (verifyResult && verifyResult.similarityPercent !== null) {
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('Visual Match  :')} ${chalk.hex('#00F5D4').bold(`${verifyResult.similarityPercent}% pixel fidelity`)}`
+        `   ${ARC('◈')} ${GOLD('FIDELITY      ')} ${ARC.bold(`${verifyResult.similarityPercent}%`)}`
       );
     }
     console.log('');
 
     return { outputDir, captureData, htmlResult, reactResult, verifyResult };
   } catch (err) {
-    spinner.fail(`Clone failed: ${err.message}`);
+    spinner.fail(`CAPTURE ABORTED: ${err.message}`);
     throw err;
   }
 }
 
 export const fullCloneModule = {
   id: 'full-clone',
-  category: 'Capture & Cloning',
-  title: 'Clone Webpage (1:1 Design Capture)',
-  description: 'Clone live DOM, CSS, assets & generate HTML/CSS + React code',
+  category: 'Capture',
+  title: '1:1 Webpage Clone',
+  description: 'DOM + CSSOM + Assets + React/Tailwind',
 
   async run(context) {
-    printSectionHeader('1:1 Webpage Cloner', 'Enter target link and choose capture mode');
+    printSectionHeader('1:1 Webpage Clone');
 
-    const targetUrl = await askUrl('Target URL (or 0 to go back)');
+    const targetUrl = await askUrl('TARGET URL');
     if (!targetUrl) return;
 
     console.log('');
     const presets = [
       {
         id: 'full',
-        title: 'Full 1:1 Suite (Recommended)',
-        description: 'HTML/CSS + React/Tailwind + Local Assets + Visual Verification',
+        title: 'Full Suite',
+        description: 'HTML/CSS + React/Tailwind + Local Assets + Fidelity Check',
         opts: {
           viewportWidth: context.settings.viewportWidth,
           viewportHeight: context.settings.viewportHeight,
@@ -144,8 +149,8 @@ export const fullCloneModule = {
       },
       {
         id: 'html-only',
-        title: 'Clean HTML + CSS + Assets Only',
-        description: 'Skip React project generation for faster static output',
+        title: 'Static HTML/CSS + Assets',
+        description: 'Skip React build',
         opts: {
           viewportWidth: context.settings.viewportWidth,
           viewportHeight: context.settings.viewportHeight,
@@ -156,8 +161,8 @@ export const fullCloneModule = {
       },
       {
         id: 'mobile',
-        title: 'Mobile Viewport 1:1 Clone (390x844)',
-        description: 'Capture mobile layout, responsive styles & React components',
+        title: 'Mobile Viewport (390x844)',
+        description: 'Mobile layout + React build + Assets',
         opts: {
           viewportWidth: 390,
           viewportHeight: 844,
@@ -168,8 +173,8 @@ export const fullCloneModule = {
       },
       {
         id: 'fast',
-        title: 'Quick Snapshot Clone (No Local Asset Download)',
-        description: 'Keep remote CDN links for instant HTML/CSS & React export',
+        title: 'Rapid Clone (Remote Assets)',
+        description: 'Skip local asset download & verification',
         opts: {
           viewportWidth: context.settings.viewportWidth,
           viewportHeight: context.settings.viewportHeight,
@@ -180,9 +185,8 @@ export const fullCloneModule = {
       }
     ];
 
-    const chosenPreset = await selectFromMenu('Select Clone Mode:', presets, {
-      allowBack: true,
-      backLabel: 'Cancel'
+    const chosenPreset = await selectFromMenu('MODE', presets, {
+      allowBack: true
     });
     if (!chosenPreset) return;
 
@@ -199,19 +203,18 @@ export const fullCloneModule = {
       const postActions = [
         {
           id: 'preview',
-          title: 'Launch Local Preview Server',
-          description: 'View the cloned webpage in your browser at http://localhost:4000'
+          title: 'Launch Local Server',
+          description: `http://localhost:${context.settings.previewPort || 4000}`
         },
         {
           id: 'explorer',
-          title: 'Open Output Folder in Explorer',
+          title: 'Open Output Directory',
           description: outputDir
         }
       ];
 
-      const nextAction = await selectFromMenu('What would you like to do next?', postActions, {
-        allowBack: true,
-        backLabel: 'Return to Main Menu'
+      const nextAction = await selectFromMenu('POST-CAPTURE', postActions, {
+        allowBack: true
       });
 
       if (!nextAction) return;
@@ -226,16 +229,16 @@ export const fullCloneModule = {
         await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
         const previewUrl = `http://localhost:${port}`;
         console.log(
-          `\n  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Preview running at ${chalk.cyan.underline(previewUrl)}`
+          `\n  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ONLINE ')} ${ARC(previewUrl)}`
         );
         if (process.platform === 'win32') {
           spawn('cmd.exe', ['/c', 'start', previewUrl], { detached: true, stdio: 'ignore' }).unref();
         }
-        await askInput('Press Enter to stop the preview server and return to menu');
+        await askInput('ENTER to terminate server');
         server.close();
       }
     } catch {
-      await askInput('Press Enter to return to menu');
+      await askInput('ENTER to return');
     }
   }
 };

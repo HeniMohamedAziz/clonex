@@ -179,7 +179,6 @@ export async function captureWebpage(targetUrl, options = {}) {
         if (el.shadowRoot && el.children.length === 0) {
           try {
             const wrapper = document.createElement('div');
-            wrapper.setAttribute('data-flattened-shadow', 'true');
             wrapper.innerHTML = el.shadowRoot.innerHTML;
             el.appendChild(wrapper);
           } catch {}

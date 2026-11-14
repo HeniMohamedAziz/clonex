@@ -12,11 +12,10 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 
 const C_RESET = '\x1b[0m';
 const C_BOLD = '\x1b[1m';
-const C_CYAN = '\x1b[36m';
-const C_GREEN = '\x1b[32m';
-const C_RED = '\x1b[31m';
-const C_YELLOW = '\x1b[33m';
-const C_GRAY = '\x1b[90m';
+const C_RED = '\x1b[38;2;239;68;68m';
+const C_GOLD = '\x1b[38;2;251;191;36m';
+const C_ARC = '\x1b[38;2;0;229;255m';
+const C_DIM = '\x1b[38;2;82;82;91m';
 
 function askYesNo(question) {
   const rl = readline.createInterface({
@@ -24,7 +23,7 @@ function askYesNo(question) {
     output: process.stdout
   });
   return new Promise((resolve) => {
-    rl.question(`  ${C_CYAN}${C_BOLD}?${C_RESET} ${C_BOLD}${question} (Y/N): ${C_RESET}`, (ans) => {
+    rl.question(`  ${C_ARC}${C_BOLD}◈${C_RESET} ${C_GOLD}${C_BOLD}${question} (Y/N)${C_RED} > ${C_RESET}`, (ans) => {
       rl.close();
       const clean = ans.trim().toLowerCase();
       resolve(clean === 'y' || clean === 'yes' || clean === '');
@@ -81,7 +80,7 @@ function findAvailableBrowserBinary() {
         ];
         for (const candidate of candidates) {
           if (fs.existsSync(candidate)) {
-            return { name: `Playwright ${dirName}`, path: candidate };
+            return { name: `Chromium [${dirName}]`, path: candidate };
           }
         }
       }
@@ -90,29 +89,29 @@ function findAvailableBrowserBinary() {
 
   const systemCandidates = [
     {
-      name: 'Google Chrome',
+      name: 'Chrome',
       path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
     },
     {
-      name: 'Google Chrome (x86)',
+      name: 'Chrome (x86)',
       path: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
     },
     {
-      name: 'Google Chrome (User)',
+      name: 'Chrome (User)',
       path: path.join(localAppData, 'Google\\Chrome\\Application\\chrome.exe')
     },
     {
-      name: 'Microsoft Edge',
+      name: 'Edge',
       path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
     },
     {
-      name: 'Microsoft Edge',
+      name: 'Edge',
       path: 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
     },
-    { name: 'Google Chrome', path: '/usr/bin/google-chrome' },
+    { name: 'Chrome', path: '/usr/bin/google-chrome' },
     { name: 'Chromium', path: '/usr/bin/chromium-browser' },
     {
-      name: 'Google Chrome',
+      name: 'Chrome',
       path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     }
   ];
@@ -131,28 +130,26 @@ async function ensureDependencies() {
   let { installed, missing } = checkInstalledPackages(requiredPkgs);
 
   if (missing.length > 0) {
-    console.log(`\n  ${C_CYAN}${C_BOLD}CloneX Pre-Flight Dependency Check${C_RESET}`);
-    console.log(`  ${C_GRAY}─────────────────────────────────────────────────────────${C_RESET}`);
+    console.log(`\n  ${C_RED}◢${C_RESET} ${C_GOLD}${C_BOLD}CLONEX // PRE-FLIGHT DIAGNOSTICS${C_RESET}`);
+    console.log(`  ${C_DIM}─────────────────────────────────────────────────────────${C_RESET}`);
 
     for (const pkg of installed) {
-      console.log(`   ${C_GREEN}✔${C_RESET} ${pkg.padEnd(18, ' ')} ${C_GRAY}installed${C_RESET}`);
+      console.log(`   ${C_ARC}◈${C_RESET} ${pkg.padEnd(18, ' ')} ${C_DIM}ONLINE${C_RESET}`);
     }
     for (const pkg of missing) {
-      console.log(`   ${C_RED}✖${C_RESET} ${pkg.padEnd(18, ' ')} ${C_YELLOW}missing${C_RESET}`);
+      console.log(`   ${C_RED}✖${C_RESET} ${pkg.padEnd(18, ' ')} ${C_GOLD}MISSING${C_RESET}`);
     }
     console.log('');
 
     const approved = await askYesNo(
-      `Missing ${missing.length} required dependency package(s). Install them now?`
+      `Install ${missing.length} missing module(s) now?`
     );
     if (!approved) {
-      console.log(
-        `\n  ${C_RED}✖ Cannot start CloneX without required dependencies. Exiting.${C_RESET}\n`
-      );
+      console.log(`\n  ${C_RED}✖ Aborted.${C_RESET}\n`);
       process.exit(1);
     }
 
-    console.log(`\n  ${C_CYAN}Installing npm dependencies...${C_RESET}\n`);
+    console.log(`\n  ${C_GOLD}Installing dependencies...${C_RESET}\n`);
     const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const res = spawnSync(npmCmd, ['install'], {
       cwd: ROOT_DIR,
@@ -161,32 +158,27 @@ async function ensureDependencies() {
     });
 
     if (res.status !== 0) {
-      console.error(`\n  ${C_RED}✖ Failed to install npm dependencies.${C_RESET}`);
+      console.error(`\n  ${C_RED}✖ npm install failed.${C_RESET}`);
       process.exit(1);
     }
 
     ({ installed, missing } = checkInstalledPackages(requiredPkgs));
     if (missing.length > 0) {
-      console.error(`\n  ${C_RED}✖ Still missing packages: ${missing.join(', ')}${C_RESET}`);
+      console.error(`\n  ${C_RED}✖ Missing: ${missing.join(', ')}${C_RESET}`);
       process.exit(1);
     }
-    console.log(`\n  ${C_GREEN}✔ All npm packages installed successfully!${C_RESET}\n`);
   }
 
   let browserInfo = findAvailableBrowserBinary();
   if (!browserInfo) {
-    console.log(`\n  ${C_YELLOW}⚠ No local Chromium/Chrome browser engine detected.${C_RESET}`);
-    const installBrowser = await askYesNo(
-      'Download & install Playwright Chromium browser engine now?'
-    );
+    console.log(`\n  ${C_RED}✖${C_RESET} ${C_GOLD}No Chromium engine found.${C_RESET}`);
+    const installBrowser = await askYesNo('Install Playwright Chromium now?');
     if (!installBrowser) {
-      console.log(
-        `\n  ${C_RED}✖ Browser engine is required to capture webpages. Exiting.${C_RESET}\n`
-      );
+      console.log(`\n  ${C_RED}✖ Aborted.${C_RESET}\n`);
       process.exit(1);
     }
 
-    console.log(`\n  ${C_CYAN}Downloading Playwright Chromium...${C_RESET}\n`);
+    console.log(`\n  ${C_GOLD}Installing Chromium...${C_RESET}\n`);
     const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     const res = spawnSync(npxCmd, ['playwright', 'install', 'chromium'], {
       cwd: ROOT_DIR,
@@ -195,19 +187,16 @@ async function ensureDependencies() {
     });
 
     if (res.status !== 0) {
-      console.error(`\n  ${C_RED}✖ Failed to install Playwright Chromium.${C_RESET}`);
+      console.error(`\n  ${C_RED}✖ Chromium install failed.${C_RESET}`);
       process.exit(1);
     }
-    browserInfo = findAvailableBrowserBinary() || { name: 'Playwright Chromium' };
+    browserInfo = findAvailableBrowserBinary() || { name: 'Chromium' };
   }
 
   return [
-    { name: 'Node.js Runtime', detail: process.version },
-    {
-      name: 'Core NPM Packages',
-      detail: `${installed.length}/${requiredPkgs.length} verified (${installed.join(', ')})`
-    },
-    { name: 'Browser Engine', detail: browserInfo.name }
+    { name: 'NODE RUNTIME', detail: process.version },
+    { name: 'CORE MODULES', detail: `${installed.length}/${requiredPkgs.length} ONLINE` },
+    { name: 'OPTICS ENGINE', detail: browserInfo.name }
   ];
 }
 

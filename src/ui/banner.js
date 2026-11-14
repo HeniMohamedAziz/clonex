@@ -1,5 +1,12 @@
 import chalk from 'chalk';
 
+const RED = chalk.hex('#DC2626');
+const BRIGHT_RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#F59E0B');
+const BRIGHT_GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+const DIM = chalk.hex('#52525B');
+
 const LOGO_LINES = [
   '   ██████╗██╗      ██████╗ ███╗   ██╗███████╗██╗  ██╗',
   '  ██╔════╝██║     ██╔═══██╗████╗  ██║██╔════╝╚██╗██╔╝',
@@ -9,55 +16,49 @@ const LOGO_LINES = [
   '   ╚═════╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝'
 ];
 
-const PALETTE = ['#00F5D4', '#00BBF9', '#4361EE', '#7209B7', '#F72585', '#FF007F'];
+const IRON_GRADIENT = ['#EF4444', '#DC2626', '#F59E0B', '#FBBF24', '#F59E0B', '#DC2626'];
 
 export function clearScreen() {
   process.stdout.write('\x1Bc');
 }
 
-export function renderBanner(subtitle = 'Web Design Capture & Reverse-Engineering Suite v1.1.0') {
+export function renderBanner(moduleTag = 'HUD // READY') {
   console.log('');
   LOGO_LINES.forEach((line, idx) => {
-    const color = PALETTE[idx % PALETTE.length];
-    console.log(chalk.hex(color).bold(line));
+    console.log(chalk.hex(IRON_GRADIENT[idx]).bold(line));
   });
+  console.log(DIM('  ═════════════════════════════════════════════════════════'));
   console.log(
-    chalk.gray('  ─────────────────────────────────────────────────────────')
+    `  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ◈ MARK-I ')} ${GOLD.bold('CLONEX')} ${DIM('//')} ${ARC(moduleTag)}`
   );
-  console.log(
-    `  ${chalk.bgHex('#7209B7').white.bold(' CLONEX ')} ${chalk.hex('#00F5D4')(subtitle)}`
-  );
-  console.log(
-    chalk.gray('  ─────────────────────────────────────────────────────────\n')
-  );
+  console.log(DIM('  ═════════════════════════════════════════════════════════\n'));
 }
 
 export async function playBootAnimation(depSummary = null) {
   clearScreen();
   console.log('');
   LOGO_LINES.forEach((line, idx) => {
-    const color = PALETTE[idx % PALETTE.length];
-    console.log(chalk.hex(color).bold(line));
+    console.log(chalk.hex(IRON_GRADIENT[idx]).bold(line));
   });
-  console.log('');
+  console.log(DIM('  ═════════════════════════════════════════════════════════'));
 
   if (depSummary) {
-    console.log(`  ${chalk.gray('System & Dependency Check:')}`);
+    console.log(`  ${GOLD.bold('DIAGNOSTICS')}`);
     for (const item of depSummary) {
-      await new Promise((r) => setTimeout(r, 45));
+      await new Promise((r) => setTimeout(r, 35));
       console.log(
-        `   ${chalk.green.bold('✔')} ${chalk.white(item.name.padEnd(22, ' '))} ${chalk.gray(item.detail || 'OK')}`
+        `   ${ARC('◈')} ${chalk.white(item.name.padEnd(20, ' '))} ${DIM(item.detail || 'ONLINE')}`
       );
     }
     console.log('');
   }
 
-  const steps = [
-    'Initializing CloneX Core...',
-    'Binding Playwright Chromium Engine...',
-    'Loading DOM & CSSOM Serializers...',
-    'Mounting Module Registry...',
-    'CloneX Ready.'
+  const stages = [
+    'IGNITING ARC REACTOR CORE',
+    'CALIBRATING CHROMIUM OPTICS',
+    'ARMING DOM & CSSOM EXTRACTORS',
+    'LINKING RECON & ASSET MODULES',
+    'ALL SYSTEMS ONLINE'
   ];
 
   const barWidth = 28;
@@ -65,21 +66,20 @@ export async function playBootAnimation(depSummary = null) {
     const ratio = i / barWidth;
     const filled = '█'.repeat(i);
     const empty = '░'.repeat(barWidth - i);
-    const percent = String(Math.round(ratio * 100)).padStart(3, ' ');
-    const stepIdx = Math.min(steps.length - 1, Math.floor(ratio * steps.length));
-    const stepText = steps[stepIdx];
+    const pct = String(Math.round(ratio * 100)).padStart(3, ' ');
+    const stage = stages[Math.min(stages.length - 1, Math.floor(ratio * stages.length))];
 
     process.stdout.write(
-      `\r  ${chalk.hex('#00F5D4')('[')}${chalk.hex('#7209B7')(filled)}${chalk.gray(empty)}${chalk.hex('#00F5D4')(']')} ${chalk.bold.white(`${percent}%`)} ${chalk.gray('│')} ${chalk.cyan(stepText.padEnd(36, ' '))}`
+      `\r  ${RED('[')}${BRIGHT_GOLD(filled)}${DIM(empty)}${RED(']')} ${ARC.bold(`${pct}%`)} ${DIM('│')} ${GOLD(stage.padEnd(32, ' '))}`
     );
-    await new Promise((r) => setTimeout(r, 28));
+    await new Promise((r) => setTimeout(r, 24));
   }
-  await new Promise((r) => setTimeout(r, 180));
+  await new Promise((r) => setTimeout(r, 150));
   clearScreen();
 }
 
-export function createCloneXSpinner(initialText = 'Processing...') {
-  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+export function createCloneXSpinner(initialText = 'WORKING') {
+  const frames = ['◈', '◇', '◈', '◆'];
   let frameIdx = 0;
   let currentText = initialText;
   let timer = null;
@@ -92,9 +92,9 @@ export function createCloneXSpinner(initialText = 'Processing...') {
         const frame = frames[frameIdx % frames.length];
         frameIdx++;
         process.stdout.write(
-          `\r  ${chalk.bgHex('#4361EE').white.bold(' CloneX ')} ${chalk.hex('#00F5D4').bold(frame)} ${chalk.white(currentText.padEnd(58, ' '))}`
+          `\r  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' CLONEX ')} ${ARC.bold(frame)} ${GOLD(currentText.padEnd(56, ' '))}`
         );
-      }, 80);
+      }, 90);
       return this;
     },
     update(text) {
@@ -104,14 +104,14 @@ export function createCloneXSpinner(initialText = 'Processing...') {
       if (timer) clearInterval(timer);
       timer = null;
       process.stdout.write(
-        `\r  ${chalk.bgHex('#00F5D4').black.bold(' CloneX ')} ${chalk.green.bold('✔')} ${chalk.green.bold((text || currentText).padEnd(58, ' '))}\n`
+        `\r  ${chalk.bgHex('#F59E0B').black.bold(' CLONEX ')} ${ARC.bold('◈')} ${BRIGHT_GOLD.bold((text || currentText).padEnd(56, ' '))}\n`
       );
     },
     fail(text) {
       if (timer) clearInterval(timer);
       timer = null;
       process.stdout.write(
-        `\r  ${chalk.bgHex('#F72585').white.bold(' CloneX ')} ${chalk.red.bold('✖')} ${chalk.red.bold((text || currentText).padEnd(58, ' '))}\n`
+        `\r  ${chalk.bgHex('#DC2626').white.bold(' CLONEX ')} ${BRIGHT_RED.bold('✖')} ${BRIGHT_RED.bold((text || currentText).padEnd(56, ' '))}\n`
       );
     },
     stop() {
@@ -124,7 +124,7 @@ export function createCloneXSpinner(initialText = 'Processing...') {
 
 export function printSectionHeader(title, subtitle = '') {
   console.log(
-    `\n  ${chalk.hex('#00F5D4').bold('▸')} ${chalk.white.bold(title.toUpperCase())}${subtitle ? chalk.gray(` — ${subtitle}`) : ''}`
+    `\n  ${BRIGHT_RED.bold('◢')} ${BRIGHT_GOLD.bold(title.toUpperCase())}${subtitle ? DIM(` // ${subtitle}`) : ''}`
   );
-  console.log(chalk.gray('  ─────────────────────────────────────────────────────────'));
+  console.log(DIM('  ─────────────────────────────────────────────────────────'));
 }

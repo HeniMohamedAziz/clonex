@@ -2,59 +2,62 @@ import chalk from 'chalk';
 import { printSectionHeader } from '../ui/banner.js';
 import { selectFromMenu, askInput } from '../ui/prompt.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+
 export const settingsModule = {
   id: 'settings',
-  category: 'Workspace & Config',
-  title: 'Engine Settings & Defaults',
-  description: 'Configure viewport size, scroll behavior & preview port',
+  category: 'System',
+  title: 'Core Configuration',
+  description: 'Viewport + Scroll + Wait + Port',
 
   async run(context) {
     while (true) {
-      printSectionHeader('CloneX Engine Settings', 'Choose a setting number to modify');
+      printSectionHeader('Core Configuration');
 
       const s = context.settings;
       const items = [
         {
           id: 'viewport',
-          title: `Default Viewport Size`,
-          description: chalk.cyan(`${s.viewportWidth}x${s.viewportHeight}`)
+          title: 'Viewport Dimensions',
+          description: ARC(`${s.viewportWidth}x${s.viewportHeight}`)
         },
         {
           id: 'wait',
-          title: `Post-Scroll Wait Time`,
-          description: chalk.cyan(`${s.waitExtraMs}ms`)
+          title: 'Post-Scroll Dwell',
+          description: ARC(`${s.waitExtraMs}ms`)
         },
         {
           id: 'scroll',
-          title: `Full-Page Auto-Scroll (Lazy Load Trigger)`,
-          description: s.fullScroll ? chalk.green('Enabled') : chalk.red('Disabled')
+          title: 'Auto-Scroll Lazy Trigger',
+          description: s.fullScroll ? GOLD('ACTIVE') : RED('OFF')
         },
         {
           id: 'port',
-          title: `Local Preview Server Port`,
-          description: chalk.cyan(`${s.previewPort}`)
+          title: 'Server Port',
+          description: ARC(`${s.previewPort}`)
         }
       ];
 
-      const choice = await selectFromMenu('Current Configuration:', items, {
-        allowBack: true,
-        backLabel: 'Save & Return to Main Menu'
+      const choice = await selectFromMenu('PARAMETERS', items, {
+        allowBack: true
       });
 
       if (!choice) break;
 
       if (choice.id === 'viewport') {
-        const w = await askInput('Viewport Width (px)', String(s.viewportWidth));
-        const h = await askInput('Viewport Height (px)', String(s.viewportHeight));
+        const w = await askInput('WIDTH (px)', String(s.viewportWidth));
+        const h = await askInput('HEIGHT (px)', String(s.viewportHeight));
         s.viewportWidth = parseInt(w, 10) || 1440;
         s.viewportHeight = parseInt(h, 10) || 900;
       } else if (choice.id === 'wait') {
-        const waitVal = await askInput('Extra wait time in ms', String(s.waitExtraMs));
+        const waitVal = await askInput('DWELL (ms)', String(s.waitExtraMs));
         s.waitExtraMs = parseInt(waitVal, 10) || 1500;
       } else if (choice.id === 'scroll') {
         s.fullScroll = !s.fullScroll;
       } else if (choice.id === 'port') {
-        const portVal = await askInput('Preview port', String(s.previewPort));
+        const portVal = await askInput('PORT', String(s.previewPort));
         s.previewPort = parseInt(portVal, 10) || 4000;
       }
     }

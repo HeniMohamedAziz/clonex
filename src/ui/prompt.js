@@ -1,6 +1,11 @@
 import readline from 'readline';
 import chalk from 'chalk';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+const DIM = chalk.hex('#52525B');
+
 let rlInstance = null;
 
 function getReadline() {
@@ -22,8 +27,8 @@ export function closePrompt() {
 
 export function askInput(label, defaultValue = '') {
   const rl = getReadline();
-  const hint = defaultValue ? chalk.gray(` (${defaultValue})`) : '';
-  const promptStr = `  ${chalk.hex('#00F5D4').bold('?')} ${chalk.white.bold(label)}${hint}${chalk.hex('#00F5D4').bold(': ')}`;
+  const hint = defaultValue ? DIM(` [${defaultValue}]`) : '';
+  const promptStr = `  ${ARC.bold('◈')} ${GOLD.bold(label)}${hint}${RED.bold(' > ')}`;
 
   return new Promise((resolve) => {
     rl.question(promptStr, (answer) => {
@@ -33,14 +38,11 @@ export function askInput(label, defaultValue = '') {
   });
 }
 
-export async function askUrl(label = 'Enter target webpage URL') {
+export async function askUrl(label = 'TARGET URL') {
   while (true) {
     const raw = await askInput(label);
-    if (!raw) {
-      console.log(chalk.red('  ✖ Please enter a URL (or type "back" to cancel).'));
-      continue;
-    }
-    if (raw.toLowerCase() === 'back' || raw.toLowerCase() === '0') {
+    if (!raw) continue;
+    if (raw.toLowerCase() === 'back' || raw === '0') {
       return null;
     }
     try {
@@ -48,42 +50,37 @@ export async function askUrl(label = 'Enter target webpage URL') {
       if (!/^https?:\/\//i.test(formatted)) {
         formatted = `https://${formatted}`;
       }
-      const parsed = new URL(formatted);
-      return parsed.href;
+      return new URL(formatted).href;
     } catch {
-      console.log(chalk.red(`  ✖ Invalid URL "${raw}". Try something like https://example.com`));
+      console.log(RED(`  ✖ Invalid URL: ${raw}`));
     }
   }
 }
 
 export async function selectFromMenu(title, items, options = {}) {
-  const { allowBack = false, backLabel = 'Back to Main Menu' } = options;
+  const { allowBack = false, backLabel = 'BACK' } = options;
 
   if (title) {
-    console.log(`  ${chalk.white.bold(title)}\n`);
+    console.log(`  ${GOLD.bold(title)}\n`);
   }
 
   let currentCategory = null;
   items.forEach((item, index) => {
     if (item.category && item.category !== currentCategory) {
       currentCategory = item.category;
-      console.log(`  ${chalk.gray.bold(currentCategory.toUpperCase())}`);
+      console.log(`  ${RED.bold('▸ ' + currentCategory.toUpperCase())}`);
     }
-    const numBadge = chalk.hex('#00F5D4').bold(`[${index + 1}]`);
+    const numBadge = GOLD.bold(`[${index + 1}]`);
     const itemTitle = chalk.white.bold(item.title);
-    const desc = item.description ? chalk.gray(` — ${item.description}`) : '';
+    const desc = item.description ? DIM(` // ${item.description}`) : '';
     console.log(`   ${numBadge} ${itemTitle}${desc}`);
   });
 
   console.log('');
-  if (allowBack) {
-    console.log(`   ${chalk.hex('#F72585').bold('[0]')} ${chalk.gray(backLabel)}\n`);
-  } else {
-    console.log(`   ${chalk.hex('#F72585').bold('[0]')} ${chalk.gray('Exit CloneX')}\n`);
-  }
+  console.log(`   ${RED.bold('[0]')} ${DIM(allowBack ? backLabel : 'SHUTDOWN')}\n`);
 
   while (true) {
-    const raw = await askInput('Select option', '1');
+    const raw = await askInput('SELECT', '1');
     const num = parseInt(raw, 10);
 
     if (raw === '0' || num === 0) {
@@ -94,15 +91,13 @@ export async function selectFromMenu(title, items, options = {}) {
       return items[num - 1];
     }
 
-    console.log(
-      chalk.red(`  ✖ Invalid choice "${raw}". Enter a number between 0 and ${items.length}.`)
-    );
+    console.log(RED(`  ✖ Out of range [0-${items.length}]`));
   }
 }
 
-export async function pauseForEnter(message = 'Press Enter to return to menu...') {
+export async function pauseForEnter(message = 'ENTER to continue...') {
   const rl = getReadline();
   await new Promise((resolve) => {
-    rl.question(`\n  ${chalk.gray(message)}`, () => resolve());
+    rl.question(`\n  ${DIM(message)}`, () => resolve());
   });
 }

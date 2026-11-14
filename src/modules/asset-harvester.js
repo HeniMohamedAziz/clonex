@@ -8,19 +8,20 @@ import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+
 export const assetHarvesterModule = {
   id: 'asset-harvester',
-  category: 'Extraction & Inspection',
-  title: 'Asset Harvester (Images, SVGs & Fonts)',
-  description: 'Download all high-res images, inline SVGs & web fonts from a URL',
+  category: 'Intelligence & Extraction',
+  title: 'Asset Harvester',
+  description: 'Images + Inline SVGs + Web Fonts',
 
   async run(context) {
-    printSectionHeader(
-      'Asset Harvester',
-      'Scrape and organize all images, inline SVGs, and web fonts'
-    );
+    printSectionHeader('Asset Harvester');
 
-    const targetUrl = await askUrl('Target URL (or 0 to go back)');
+    const targetUrl = await askUrl('TARGET URL');
     if (!targetUrl) return;
 
     const outputDir = getDefaultOutputDir(process.cwd(), targetUrl);
@@ -28,7 +29,7 @@ export const assetHarvesterModule = {
     await fs.mkdir(svgDir, { recursive: true });
 
     console.log('');
-    const spinner = createCloneXSpinner('Scanning page for media, SVGs, and font files...').start();
+    const spinner = createCloneXSpinner('SCANNING MEDIA & VECTORS').start();
 
     try {
       const captureData = await captureWebpage(targetUrl, {
@@ -36,7 +37,7 @@ export const assetHarvesterModule = {
         viewportHeight: context.settings.viewportHeight,
         waitExtraMs: context.settings.waitExtraMs,
         fullScroll: true,
-        onProgress: (msg) => spinner.update(msg)
+        onProgress: (msg) => spinner.update(msg.toUpperCase())
       });
 
       const $ = cheerio.load(`<body>${captureData.bodyHtml}</body>`, {
@@ -61,7 +62,7 @@ export const assetHarvesterModule = {
         }
       }
 
-      spinner.update('Downloading external images and web fonts...');
+      spinner.update('DOWNLOADING REMOTE ASSETS & FONTS');
       const assetResult = await downloadAndRewriteAssets({
         cssText: captureData.fullCss,
         $,
@@ -71,20 +72,20 @@ export const assetHarvesterModule = {
         userAgent: captureData.userAgent
       });
 
-      spinner.succeed('Asset harvesting complete!');
+      spinner.succeed('ASSET HARVEST COMPLETE');
 
-      console.log(`\n  ${chalk.hex('#00F5D4').bold('Harvest Summary:')}`);
+      console.log(`\n  ${RED.bold('▸ SUMMARY')}`);
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('Downloaded Media & Fonts :')} ${chalk.white(assetResult.downloadedCount)} files`
+        `   ${ARC('◈')} ${GOLD('MEDIA & FONTS ')} ${chalk.white(assetResult.downloadedCount)}`
       );
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('Extracted Inline SVGs    :')} ${chalk.white(inlineSvgCount)} vector files`
+        `   ${ARC('◈')} ${GOLD('INLINE SVGS   ')} ${chalk.white(inlineSvgCount)}`
       );
       console.log(
-        `   ${chalk.green('•')} ${chalk.white.bold('Output Directory         :')} ${chalk.cyan(path.join(outputDir, 'assets'))}`
+        `   ${ARC('◈')} ${GOLD('DIRECTORY     ')} ${chalk.white(path.join(outputDir, 'assets'))}`
       );
     } catch (err) {
-      spinner.fail(`Asset harvest failed: ${err.message}`);
+      spinner.fail(`ABORTED: ${err.message}`);
     }
 
     await pauseForEnter();

@@ -11,6 +11,10 @@ import { selectFromMenu, closePrompt } from './ui/prompt.js';
 import { CLONEX_MODULES } from './modules/index.js';
 import { executeCloneJob, getDefaultOutputDir } from './modules/full-clone.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+
 const runtimeContext = {
   settings: {
     viewportWidth: 1440,
@@ -29,18 +33,18 @@ async function startInteractiveMenu(depSummary) {
     renderBanner();
 
     const selectedModule = await selectFromMenu(
-      'MAIN MENU — Choose a tool by number:',
+      'OPERATIONS',
       CLONEX_MODULES
     );
 
     if (!selectedModule) {
-      console.log(`\n  ${chalk.hex('#00F5D4')('Shutting down CloneX. Goodbye!')}\n`);
+      console.log(`\n  ${RED('◈')} ${GOLD('ARC REACTOR OFFLINE.')}\n`);
       closePrompt();
       process.exit(0);
     }
 
     clearScreen();
-    renderBanner(`${selectedModule.title}`);
+    renderBanner(selectedModule.title.toUpperCase());
     await selectedModule.run(runtimeContext);
   }
 }
@@ -58,34 +62,34 @@ export async function runCli(depSummary = null) {
 
   program
     .name('clonex')
-    .description('CloneX — Interactive Web Design Capture & Reverse-Engineering Suite')
+    .description('CloneX — Web Capture & Recon Suite')
     .version('1.1.0');
 
   program
-    .argument('[url]', 'Optional URL to clone directly (omit to launch interactive menu)')
-    .option('-o, --output <dir>', 'Custom output directory path')
-    .option('-W, --width <number>', 'Viewport width in pixels', '1440')
-    .option('-H, --height <number>', 'Viewport height in pixels', '900')
-    .option('--wait <ms>', 'Extra wait time in ms after scrolling', '1500')
-    .option('--no-scroll', 'Disable full-page auto-scroll before capture')
-    .option('--no-assets', 'Keep remote asset URLs instead of downloading locally')
-    .option('--no-react', 'Skip generating the React + Tailwind project')
-    .option('--no-verify', 'Skip screenshot comparison verification')
-    .option('-s, --serve', 'Start a local preview server after cloning')
-    .option('-p, --port <number>', 'Port for preview server', '4000')
+    .argument('[url]', 'Target URL')
+    .option('-o, --output <dir>', 'Output directory')
+    .option('-W, --width <number>', 'Viewport width', '1440')
+    .option('-H, --height <number>', 'Viewport height', '900')
+    .option('--wait <ms>', 'Post-scroll dwell ms', '1500')
+    .option('--no-scroll', 'Disable auto-scroll')
+    .option('--no-assets', 'Skip asset download')
+    .option('--no-react', 'Skip React build')
+    .option('--no-verify', 'Skip fidelity verification')
+    .option('-s, --serve', 'Start local server after capture')
+    .option('-p, --port <number>', 'Server port', '4000')
     .action(async (rawUrl, options) => {
       if (!rawUrl) {
         await startInteractiveMenu(depSummary);
         return;
       }
 
-      renderBanner();
+      renderBanner('DIRECT CAPTURE');
 
       let targetUrl;
       try {
         targetUrl = normalizeUrl(rawUrl);
       } catch {
-        console.error(chalk.red(`  ✖ Invalid URL: "${rawUrl}"`));
+        console.error(RED(`  ✖ Invalid URL: ${rawUrl}`));
         process.exit(1);
       }
 
@@ -113,7 +117,7 @@ export async function runCli(depSummary = null) {
           const server = createStaticServer(outputDir);
           server.listen(port, '127.0.0.1', () => {
             console.log(
-              `  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Preview server running at ${chalk.cyan(`http://localhost:${port}`)}`
+              `  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ONLINE ')} ${ARC(`http://localhost:${port}`)}`
             );
           });
         } else {
@@ -127,16 +131,16 @@ export async function runCli(depSummary = null) {
 
   program
     .command('preview <dir>')
-    .description('Start a local static server to preview a cloned folder')
-    .option('-p, --port <number>', 'Port to listen on', '4000')
+    .description('Start local static server')
+    .option('-p, --port <number>', 'Port', '4000')
     .action((dir, opts) => {
-      renderBanner('Local Preview Server');
+      renderBanner('LOCAL SERVER');
       const resolvedDir = path.resolve(process.cwd(), dir);
       const port = parseInt(opts.port, 10) || 4000;
       const server = createStaticServer(resolvedDir);
       server.listen(port, '127.0.0.1', () => {
         console.log(
-          `  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Serving ${chalk.white(resolvedDir)} at ${chalk.cyan.underline(`http://localhost:${port}`)}\n`
+          `  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ONLINE ')} ${chalk.white(resolvedDir)} -> ${ARC(`http://localhost:${port}`)}\n`
         );
       });
     });

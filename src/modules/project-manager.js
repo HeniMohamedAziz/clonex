@@ -7,18 +7,22 @@ import { createStaticServer } from '../verifier.js';
 import { printSectionHeader } from '../ui/banner.js';
 import { selectFromMenu, askInput, pauseForEnter } from '../ui/prompt.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+
 export const projectManagerModule = {
   id: 'project-manager',
-  category: 'Workspace & Config',
-  title: 'Browse & Preview Cloned Sites',
-  description: 'Launch local preview server or open your cloned projects',
+  category: 'System',
+  title: 'Project Vault & Local Server',
+  description: 'Preview, inspect or purge captured targets',
 
   async run(context) {
-    printSectionHeader('Cloned Projects Manager', 'Manage and preview your captured websites');
+    printSectionHeader('Project Vault');
 
     const rootClonesDir = path.resolve(process.cwd(), 'cloned-sites');
     if (!existsSync(rootClonesDir)) {
-      console.log(chalk.yellow('  No cloned sites found yet in ./cloned-sites/'));
+      console.log(GOLD('  No captured targets in ./cloned-sites/'));
       await pauseForEnter();
       return;
     }
@@ -27,7 +31,7 @@ export const projectManagerModule = {
     const folders = entries.filter((e) => e.isDirectory()).map((e) => e.name);
 
     if (folders.length === 0) {
-      console.log(chalk.yellow('  No cloned sites found yet in ./cloned-sites/'));
+      console.log(GOLD('  No captured targets in ./cloned-sites/'));
       await pauseForEnter();
       return;
     }
@@ -38,12 +42,12 @@ export const projectManagerModule = {
       return {
         id: folderName,
         title: folderName,
-        description: hasReact ? 'HTML/CSS + React Project' : 'HTML/CSS / Assets',
+        description: hasReact ? 'HTML/CSS + React' : 'HTML/CSS',
         fullPath
       };
     });
 
-    const selectedProject = await selectFromMenu('Select a cloned project:', menuItems, {
+    const selectedProject = await selectFromMenu('CAPTURED TARGETS', menuItems, {
       allowBack: true
     });
     if (!selectedProject) return;
@@ -52,24 +56,23 @@ export const projectManagerModule = {
     const actions = [
       {
         id: 'preview',
-        title: 'Start Live Local Preview Server',
-        description: `Serve ${selectedProject.title} at http://localhost:${context.settings.previewPort || 4000}`
+        title: 'Launch Local Server',
+        description: `http://localhost:${context.settings.previewPort || 4000}`
       },
       {
         id: 'explorer',
-        title: 'Open Folder in Windows Explorer',
+        title: 'Open Directory',
         description: selectedProject.fullPath
       },
       {
         id: 'delete',
-        title: 'Delete Cloned Project',
-        description: 'Permanently remove this folder from ./cloned-sites/'
+        title: 'Purge Target',
+        description: 'Delete from disk'
       }
     ];
 
-    const action = await selectFromMenu(`Manage "${selectedProject.title}":`, actions, {
-      allowBack: true,
-      backLabel: 'Back'
+    const action = await selectFromMenu(`TARGET // ${selectedProject.title}`, actions, {
+      allowBack: true
     });
 
     if (!action) return;
@@ -81,7 +84,6 @@ export const projectManagerModule = {
           stdio: 'ignore'
         }).unref();
       }
-      console.log(chalk.green(`\n  ✔ Opened ${selectedProject.fullPath}`));
       await pauseForEnter();
     } else if (action.id === 'preview') {
       const port = context.settings.previewPort || 4000;
@@ -89,7 +91,7 @@ export const projectManagerModule = {
       await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
       const previewUrl = `http://localhost:${port}`;
       console.log(
-        `\n  ${chalk.bgHex('#00F5D4').black.bold(' LIVE ')} Serving ${chalk.white.bold(selectedProject.title)} at ${chalk.cyan.underline(previewUrl)}`
+        `\n  ${chalk.bgHex('#B91C1C').hex('#FBBF24').bold(' ONLINE ')} ${ARC(previewUrl)}`
       );
       if (process.platform === 'win32') {
         spawn('cmd.exe', ['/c', 'start', previewUrl], {
@@ -97,13 +99,13 @@ export const projectManagerModule = {
           stdio: 'ignore'
         }).unref();
       }
-      await askInput('Press Enter to stop the preview server');
+      await askInput('ENTER to terminate server');
       server.close();
     } else if (action.id === 'delete') {
-      const confirm = await askInput(`Type "yes" to delete ${selectedProject.title}`, 'no');
-      if (confirm.toLowerCase() === 'yes') {
+      const confirm = await askInput(`Confirm purge "${selectedProject.title}" (y/n)`, 'n');
+      if (confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes') {
         await fs.rm(selectedProject.fullPath, { recursive: true, force: true });
-        console.log(chalk.green(`\n  ✔ Deleted ${selectedProject.title}`));
+        console.log(RED(`\n  ◈ Purged ${selectedProject.title}`));
       }
       await pauseForEnter();
     }

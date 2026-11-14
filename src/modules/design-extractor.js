@@ -6,6 +6,11 @@ import { getDefaultOutputDir } from './full-clone.js';
 import { createCloneXSpinner, printSectionHeader } from '../ui/banner.js';
 import { askUrl, pauseForEnter } from '../ui/prompt.js';
 
+const RED = chalk.hex('#EF4444');
+const GOLD = chalk.hex('#FBBF24');
+const ARC = chalk.hex('#00E5FF');
+const DIM = chalk.hex('#52525B');
+
 function rgbStringToHex(rgbStr) {
   const match = rgbStr.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
   if (!match) return null;
@@ -23,24 +28,21 @@ function rgbStringToHex(rgbStr) {
 
 export const designExtractorModule = {
   id: 'design-extractor',
-  category: 'Extraction & Inspection',
-  title: 'Design System & Tailwind Extractor',
-  description: 'Extract color palette, fonts, CSS variables & tailwind.config.js',
+  category: 'Intelligence & Extraction',
+  title: 'Design System & Tokens',
+  description: 'Palette + Typography + CSS Variables + Tailwind Config',
 
   async run(context) {
-    printSectionHeader(
-      'Design System Extractor',
-      'Extract colors, typography, CSS variables & Tailwind config'
-    );
+    printSectionHeader('Design System & Tokens');
 
-    const targetUrl = await askUrl('Target URL (or 0 to go back)');
+    const targetUrl = await askUrl('TARGET URL');
     if (!targetUrl) return;
 
     const outputDir = getDefaultOutputDir(process.cwd(), targetUrl);
     await fs.mkdir(outputDir, { recursive: true });
 
     console.log('');
-    const spinner = createCloneXSpinner('Scanning computed styles and CSS variables...').start();
+    const spinner = createCloneXSpinner('SCANNING COMPUTED STYLES').start();
 
     try {
       const captureData = await captureWebpage(targetUrl, {
@@ -48,7 +50,7 @@ export const designExtractorModule = {
         viewportHeight: context.settings.viewportHeight,
         waitExtraMs: 1000,
         fullScroll: false,
-        onProgress: (msg) => spinner.update(msg)
+        onProgress: (msg) => spinner.update(msg.toUpperCase())
       });
 
       const tokens = captureData.designTokens;
@@ -61,8 +63,7 @@ export const designExtractorModule = {
         palette[`brand-${idx + 1}`] = hex;
       });
 
-      const tailwindConfig = `/** @type {import('tailwindcss').Config} */
-export default {
+      const tailwindConfig = `export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -83,25 +84,25 @@ export default {
       const twPath = path.join(outputDir, 'tailwind.config.js');
       await fs.writeFile(twPath, tailwindConfig, 'utf-8');
 
-      spinner.succeed(`Extracted design tokens from "${captureData.title}"`);
+      spinner.succeed(`TOKENS EXTRACTED: "${captureData.title}"`);
 
-      console.log(`\n  ${chalk.hex('#00F5D4').bold('Top Colors Detected:')}`);
+      console.log(`\n  ${RED.bold('▸ PALETTE')}`);
       (tokens.colors || []).slice(0, 8).forEach((item) => {
         const hex = rgbStringToHex(item.color);
         const swatch = hex ? chalk.bgHex(hex)('    ') : '    ';
         console.log(
-          `   ${swatch}  ${chalk.white.bold((hex || item.color).padEnd(12, ' '))} ${chalk.gray(`(${item.color} — ${item.count} nodes)`)}`
+          `   ${swatch}  ${GOLD.bold((hex || item.color).padEnd(12, ' '))} ${DIM(`${item.color} [${item.count}]`)}`
         );
       });
 
-      console.log(`\n  ${chalk.hex('#00F5D4').bold('Font Families:')}`);
-      console.log(`   ${chalk.white(tokens.fontFamilies.join(', ') || 'System Default')}`);
+      console.log(`\n  ${RED.bold('▸ TYPOGRAPHY')}`);
+      console.log(`   ${chalk.white(tokens.fontFamilies.join(' // ') || 'Default')}`);
 
-      console.log(`\n  ${chalk.hex('#00F5D4').bold('Saved Files:')}`);
-      console.log(`   ${chalk.green('•')} ${chalk.cyan(tokensPath)}`);
-      console.log(`   ${chalk.green('•')} ${chalk.cyan(twPath)}`);
+      console.log(`\n  ${RED.bold('▸ ARTIFACTS')}`);
+      console.log(`   ${ARC('◈')} ${chalk.white(tokensPath)}`);
+      console.log(`   ${ARC('◈')} ${chalk.white(twPath)}`);
     } catch (err) {
-      spinner.fail(`Extraction failed: ${err.message}`);
+      spinner.fail(`ABORTED: ${err.message}`);
     }
 
     await pauseForEnter();
